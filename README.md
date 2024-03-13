@@ -24,6 +24,7 @@ facilitating the rapid development and deployment of IIoT solutions.
 
 ## Quick Start Guide
 
+
 ### Initialization
 
 ```cpp
