@@ -36,12 +36,12 @@ void setup()
 	EQSP32Configs myEQSP32Configs;
 	myEQSP32Configs.databaseURL = "Your firebase realtime database URL";
 	myEQSP32Configs.databaseAPIKey = "Your firebase realtime database API key";
-    myEQSP32Configs.devSystemID = "MysystemV1.0";		// This is a developer's parameter for the custom mobile app to connect only with compatible installations
+    	myEQSP32Configs.devSystemID = "MysystemV1.0";		// This is a developer's parameter for the custom mobile app to connect only with compatible installations
 
-    eqsp32.begin(myEQSP32Configs);
+    	eqsp32.begin(myEQSP32Configs);
 }
 
 void loop()
 {
-    delay(1000);
+    	delay(1000);
 }
