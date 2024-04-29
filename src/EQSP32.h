@@ -85,7 +85,7 @@ enum CanBitRates
 };
 
 
-enum SerialMode {
+enum EQSerialMode {
     RS232,
     RS232_INV,
     RS485_TX,
@@ -99,7 +99,7 @@ typedef struct
     std::string databaseAPIKey;
     std::string devSystemID;        // Developer system ID (assigned by the system's developer, hardcoded by developer, READ ONLY access by external app)
     std::string userDevName;        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
-    bool relaySequencer = false;    // TODO experimental feature
+    bool relaySequencer = true;
 } EQSP32Configs;
 
 
@@ -525,7 +525,7 @@ public:
      * bool isConfigured = eqsp32.configSerial(); // Configures the module for RS232 mode at 115200 baud (default values)
      * bool isConfiguredCustom = eqsp32.configSerial(RS485_TX, 9600); // Configures the module for RS485 Transmit mode at 9600 baud
      */
-    bool configSerial(SerialMode mode = RS232, int baud = 115200);
+    bool configSerial(EQSerialMode mode = RS232, int baud = 115200);
 
     bool configCAN(CanBitRates CAN_BITRATE);
     bool configCAN(CanBitRates CAN_BITRATE, uint32_t canID, bool canOpenFrame=false);
