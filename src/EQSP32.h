@@ -3,6 +3,12 @@
 
 #include <Arduino.h>
 #include "time.h"
+#include <HTTPClient.h>
+
+#include <unordered_map>   // For std::unordered_map
+#include <map>             // For std::map
+#include <functional>      // For std::function
+#include <type_traits>     // For type traits utilities
 
 #include "driver/ledc.h"
 #include "driver/mcpwm.h"
@@ -45,11 +51,35 @@
 #define IS_RS485_PIN(p)     (p >= EQ_RS485_TX && p <= EQ_RS485_EN ? true : false)
 #define IS_CAN_PIN(p)       (p == EQ_CAN_TX || p == EQ_CAN_RX ? true : false)
 
+// EQSP32 IoT expansion modules - Masks
+#define PIN_SHIFT(id)       (id << 0)
+#define MODULE_SHIFT(id)    (id << 16)
+#define SLAVE_SHIFT(id)     (id << 24)
+
+#define PIN_MASK            PIN_SHIFT(0xFF)
+#define MODULE_MASK         MODULE_SHIFT(0xFF)
+#define SLAVE_MASK          SLAVE_SHIFT(0xFF)
+
+// EQSP32 IoT expansion modules - Index Codes
+#define MASTER(pin)         (SLAVE_SHIFT(0) | (pin & MODULE_MASK) | (pin & PIN_MASK))
+#define SLAVE_1(pin)        (SLAVE_SHIFT(1) | (pin & MODULE_MASK) | (pin & PIN_MASK))
+#define SLAVE_2(pin)        (SLAVE_SHIFT(2) | (pin & MODULE_MASK) | (pin & PIN_MASK))
+#define SLAVE_3(pin)        (SLAVE_SHIFT(3) | (pin & MODULE_MASK) | (pin & PIN_MASK))
+#define SLAVE_4(pin)        (SLAVE_SHIFT(4) | (pin & MODULE_MASK) | (pin & PIN_MASK))
+
+#define EQ_MAIN(pin)        MASTER(pin)
+#define EQ_AUX_1(pin)       SLAVE_1(pin)
+#define EQ_AUX_2(pin)       SLAVE_2(pin)
+#define EQ_AUX_3(pin)       SLAVE_3(pin)
+#define EQ_AUX_4(pin)       SLAVE_4(pin)
+
+#define PH_EXP(pin)         (MODULE_SHIFT(1) | (pin & PIN_MASK))
 
 // EQSP32 pin modes
 enum PinMode : uint8_t {
     NO_MODE = 0xFF,
     CUSTOM  = 0xFE,
+    INIT_NA = 0xFD,
     DIN     = 0,
     DOUT,               // Not used
     AIN,
@@ -92,19 +122,59 @@ enum EQSerialMode {
     RS485_RX,
 };
 
-
 typedef struct
 {
-    std::string databaseURL;
-    std::string databaseAPIKey;
-    std::string devSystemID;        // Developer system ID (assigned by the system's developer, hardcoded by developer, READ ONLY access by external app)
-    std::string userDevName;        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
-    bool relaySequencer = true;
+    std::string databaseURL = "";
+    std::string databaseAPIKey = "";
+    std::string devSystemID = "";        // Developer system ID (assigned by the system's developer, hardcoded by developer, READ ONLY access by external app)
+    std::string userDevName = "";        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
+    std::string wifiSSID = "";          // (Optional) Default network SSID
+    std::string wifiPassword = "";      // (Optional) Default network password
+    bool relaySequencer = false;
+    bool mqttDiscovery = false;
 } EQSP32Configs;
 
 
 class EQ_Private;       // Forward declaration of the nested private class
 
+
+/**
+ * @brief EQSP32 ESP32 Industrial IoT PLC Controller.
+ * 
+ * The EQSP32 class provides a comprehensive interface for interacting with the EQSP32 IoT controller.
+ * This class includes methods for initializing the module, configuring and controlling ADIO (analog/digital I/O) pins and their special modes, handling industrial communications (RS232, RS485, CANBus),
+ * handling user cloud variables, IoT connectivity with cloud server (Firebase), and handling
+ * MQTT device interfaces for Home Assistant integration.
+ * 
+ * @note It is critical to call the `begin()` function at the beginning of your EQSP32 application for proper operation.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * #include <EQSP32.h>
+ * 
+ * EQSP32 eqsp32;
+ * 
+ * void setup() {
+ *     EQSP32Configs configs;
+ *     configs.databaseURL = "https://example.com/database";    // Needed for firebase connection
+ *     configs.databaseAPIKey = "API_KEY";                      // Needed for firebase connection
+ *     configs.devSystemID = "SYSTEM_ID";                       // Needed for custom mobile app
+ *     configs.userDevName = "Device Name";                     // Optional
+ *     configs.wifiSSID = "YourSSID";                           // Optional
+ *     configs.wifiPassword = "YourPassword";                   // Optional
+ *     configs.relaySequencer = true;                           // Default false
+ *     configs.mqttDiscovery = true;                            // Optional
+ * 
+ *     eqsp32.begin(configs, true);
+ * }
+ * 
+ * void loop() {
+ *     // Your main code
+ * }
+ * @endcode
+ */
 class EQSP32 {
 public:
     EQSP32();
@@ -140,6 +210,61 @@ public:
     void begin(std::string command);
 
     /**
+     * @brief Checks if a given pin identifier corresponds to a local pin on the EQSP32 module.
+     * 
+     * This function determines whether a given pin identifier (idMaskCode) corresponds to a local pin on the EQSP32 module.
+     * A local pin refers to a pin on the EQSP32 module itself based on its mode (master, slave 1, etc).
+     * 
+     * For example, if the EQSP32 module is set to slave mode with ID 1, then SLAVE_1(pin) is local. If the EQSP32 module 
+     * is in slave mode with ID 2 or in master mode, then SLAVE_1(pin) would return false.
+     * 
+     * @param idMaskCode The pin identifier mask code to check.
+     * 
+     * @return Returns true if the pin identifier corresponds to a local pin on the EQSP32 module, otherwise returns false.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * EQSP32 eqsp32;
+     * uint32_t pinCode = SLAVE_1(EQ_PIN_3); // Example pin code
+     * bool isLocal = eqsp32.isLocalPin(pinCode);
+     * if (isLocal) {
+     *     Serial.println("The pin is local to the EQSP32 module.");
+     * } else {
+     *     Serial.println("The pin is not local to the EQSP32 module.");
+     * }
+     * @endcode
+     */
+    bool isLocalPin(uint32_t idMaskCode);
+
+    /**
+     * @brief Checks if a given pin identifier corresponds to an expansion module pin on the EQSP32.
+     * 
+     * This function determines whether a given pin identifier (idMaskCode) corresponds to a pin on one of the expansion modules
+     * of the EQSP32. It checks if the pin is not on the main unit but on an expansion module.
+     * 
+     * @param idMaskCode The pin identifier mask code to check.
+     * 
+     * @return Returns true if the pin identifier corresponds to a pin on an expansion module, otherwise returns false.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * EQSP32 eqsp32;
+     * uint32_t pinCode = PH_EXP(EQ_PIN_3); // Example pin code for expansion module
+     * bool isExpPin = eqsp32.isExpModulePin(pinCode);
+     * if (isExpPin) {
+     *     Serial.println("The pin is on an expansion module.");
+     * } else {
+     *     Serial.println("The pin is on the main unit.");
+     * }
+     * @endcode
+     */
+    bool isExpModulePin(uint32_t idMaskCode);
+
+    /**
      * @brief Retrieves the corresponding ESP32 pin number for a given EQSP32 pin index.
      * 
      * This function maps a high-level EQSP32 pin index to the actual ESP32 GPIO number or peripheral pin.
@@ -148,6 +273,7 @@ public:
      * For CAN pins, it returns the native ESP32 pin mapped on the CAN driver and deinitializes the CAN peripheral. It is up to the user to initialize the CAN peripheral based on their needs.
      * 
      * @param pinIndex The index of the EQSP32 pin (e.g., EQ_RS232_TX, EQ_RS485_RX).
+     * Master/Slave and Expansion module masks are handled automatically.
      * @return The corresponding ESP32 pin number if the pin is valid, or -1 if the pin index does not match any known configuration.
      * 
      * @example
@@ -178,6 +304,7 @@ public:
      * The function returns true if the configuration is successful, and false otherwise.
      * 
      * @param pinIndex The index of the pin to set the mode for (1 to 16).
+     * Master/Slave and Expansion module masks are handled automatically.
      * @param mode The mode to set for the pin. Available options are DIN, DOUT, AIN, AOUT, POUT, SWT, TIN, RELAY.
      * @param freq The PWM frequency to use for analog output (AOUT) mode. Ignored for other modes. Default is 500 Hz.
      * 
@@ -188,6 +315,42 @@ public:
      * bool success = EQSP32::pinMode(3, DOUT); // Configures pin 3 as a digital output
      */
     bool pinMode(int pinIndex, PinMode mode, int freq = 500);
+
+    /**
+     * @brief Reads the current mode of a specified pin on the EQSP32.
+     * 
+     * This function retrieves the current mode of a specified pin on the EQSP32.
+     * If the pin is valid and local, it returns the current mode of the pin, else it returns `NO_MODE`.
+     * 
+     * @param pinIndex The index of the pin to read the mode from (1 to 16).
+     * 
+     * @return The current mode of the specified pin. It returns one of the following PinMode values: 
+     * `DIN`, `DOUT`, `AIN`, `AOUT`, `POUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `NO_MODE`.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * EQSP32 eqsp32;
+     * eqsp32.begin();
+     * PinMode mode = eqsp32.readMode(EQ_PIN_3); // Reads the mode of pin 3
+     * if (mode != NO_MODE) {
+     *     Serial.println("The pin mode is valid and local.");
+     * } else {
+     *     Serial.println("The pin mode is not valid, not configured or not local.");
+     * }
+     * 
+     * // Example for checking the mode of a slave ID 1 pin
+     * uint32_t slavePin = SLAVE_1(EQ_PIN_3);
+     * PinMode slaveMode = eqsp32.readMode(slavePin); // Reads the mode of slave ID 1 pin 3
+     * if (slaveMode != NO_MODE) {
+     *     Serial.println("The slave pin mode is valid and local for Slave 1.");
+     * } else {
+     *     Serial.println("The slave pin mode is not valid, not configured or this unit is not in Slave 1 mode.");
+     * }
+     * @endcode
+     */
+    PinMode readMode(int pinIndex);
 
     /**
      * @brief Sets the value for a specified pin on the EQSP32.
@@ -215,6 +378,7 @@ public:
      * bool success = EQSP32::pinValue(3, 750); // Sets the value of pin 3 to 75%
      */
     bool pinValue(int pinIndex, int value);
+    // bool pinValue(IoTIndexCode iotIndex, int pinIndex, int value);
 
     /**
      * @brief Reads the value of a specified pin on the EQSP32.
@@ -246,6 +410,7 @@ public:
      * int value = EQSP32::readPin(3, ON_RISING); // Reads the digital value of pin 3, considering ON_RISING trigger mode
      */
     int readPin(int pinIndex, TrigMode trigMode = STATE);    // New method to read pin values
+    // int readPin(IoTIndexCode iotIndex, int pinIndex, TrigMode trigMode = STATE);
 
     /**
      * @brief Configures the PWM frequency for the Power PWM Output (POUT) mode on the EQSP32.
@@ -275,6 +440,7 @@ public:
      * bool success = EQSP32::configPOUTFreq(500); // Sets the PWM frequency for Power PWM Output (POUT) mode to 500 Hz
      */
     bool configPOUTFreq(int freq);
+    // bool configPOUTFreq(IoTIndexCode iotIndex, int freq);
 
         // Special mode configurations
     /**
@@ -294,6 +460,7 @@ public:
      * bool success = EQSP32::configSWT(3, 150); // Configures pin 3 for Switch (SWT) mode with a debounce time of 150 milliseconds
      */
     bool configSWT(int pinIndex, int debounceTime_ms = 100);
+    // bool configSWT(IoTIndexCode iotIndex, int pinIndex, int debounceTime_ms = 100);
 
     /**
      * @brief Configures the Temperature Input (TIN) mode on the EQSP32.
@@ -313,6 +480,7 @@ public:
      * bool success = EQSP32::configTIN(2, 4000, 12000); // Configures pin 2 for Temperature Input (TIN) mode with a beta coefficient of 4000 and a reference resistance of 12000 ohms
      */
     bool configTIN(int pinIndex, int beta = 3988, int referenceResistance = 10000);
+    // bool configTIN(IoTIndexCode iotIndex, int pinIndex, int beta = 3988, int referenceResistance = 10000);
 
     /**
      * @brief Configures the Relay (RELAY) mode on the EQSP32.
@@ -334,6 +502,7 @@ public:
      * bool success = EQSP32::configRELAY(4, 300, 1500); // Configures pin 4 for Relay (RELAY) mode with a hold value of 300 and a derate delay of 1500 milliseconds
      */    
     bool configRELAY(int pinIndex, int holdValue = 500, int derateDelay = 1000);
+    // bool configRELAY(IoTIndexCode iotIndex, int pinIndex, int holdValue = 500, int derateDelay = 1000);
 
         // Read/Write database user variables
     /**
@@ -542,17 +711,189 @@ private:
     EQ_Private* eqPrivate;
 };
 
+
+/**
+ * @brief Timer class for managing timing operations.
+ * 
+ * The Timer class provides methods to start, stop, pause, reset, and check the status of a timer.
+ * It is useful for timing events and managing delays in the EQSP32 application.
+ */
 class Timer {
 public:
+    /**
+     * @brief Constructs a Timer object with an optional preset value.
+     * 
+     * Initializes a Timer object, setting an optional preset value for the timer.
+     * The timer is initially stopped.
+     * 
+     * @param preset Optional preset value in milliseconds for the timer. Default is 0.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer(5000); // Creates a Timer object with a 5 second preset
+     * @endcode
+     */
     Timer(unsigned long preset = 0);
 
+    /**
+     * @brief Starts the timer with an optional preset value.
+     * 
+     * Starts the timer if it is not already running.
+     * If a preset value is provided, it updates the timer's preset value.
+     * 
+     * @param preset Optional preset value in milliseconds. Default is 0.
+     * @return Returns true if the timer started successfully, otherwise returns false if the timer was already running.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer;
+     * bool started = myTimer.start(3000); // Starts the timer with a 3 second preset
+     * if (started) {
+     *     Serial.println("Timer started.");
+     * } else {
+     *     Serial.println("Timer was already running.");
+     * }
+     * @endcode
+     */
     bool start(unsigned long preset = 0);
+
+    /**
+     * @brief Stops the timer.
+     * 
+     * Stops the timer and resets the elapsed time.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer;
+     * myTimer.start(5000); // Start the timer
+     * delay(2000); // Wait for 2 seconds
+     * myTimer.stop(); // Stop the timer
+     * @endcode
+     */ 
     void stop();
+
+    /**
+     * @brief Pauses the timer.
+     * 
+     * Pauses the timer, retaining the elapsed time. The timer can be resumed by calling `start()`.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer;
+     * myTimer.start(5000); // Start the timer
+     * delay(2000); // Wait for 2 seconds
+     * myTimer.pause(); // Pause the timer
+     * delay(1000); // Wait for another second
+     * myTimer.start(); // Resume the timer
+     * @endcode
+     */
     void pause();
+
+    /**
+     * @brief Resets the timer with an optional preset value.
+     * 
+     * Resets the timer and optionally updates the preset value. The timer stops and can be restarted.
+     * 
+     * @param preset Optional preset value in milliseconds. Default is 0.
+     * @return Returns true if the timer was running and has been reset, otherwise returns false.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer;
+     * myTimer.start(5000); // Start the timer with a 5 second preset
+     * delay(2000); // Wait for 2 seconds
+     * bool reset = myTimer.reset(3000); // Reset the timer with a new 3 second preset
+     * if (reset) {
+     *     Serial.println("Timer reset successfully.");
+     * } else {
+     *     Serial.println("Timer was not running.");
+     * }
+     * @endcode
+     */
     bool reset(unsigned long preset = 0);
 
+    /**
+     * @brief Retrieves the current elapsed time of the timer.
+     * 
+     * Returns the total elapsed time since the timer was started, including any paused periods. 
+     * When the timer is paused, the elapsed time stops accumulating until the timer is resumed.
+     * 
+     * @return The elapsed time in milliseconds.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer;
+     * myTimer.start(10000); // Start the timer with a 10 second preset
+     * delay(3000); // Run for 3 seconds
+     * myTimer.pause(); // Pause the timer
+     * delay(2000); // Pause for 2 seconds (does not count towards the elapsed time)
+     * myTimer.start(); // Resume the timer
+     * delay(3000); // Run for another 3 seconds
+     * unsigned long elapsedTime = myTimer.value(); // Retrieve the elapsed time
+     * Serial.print("Elapsed time: ");
+     * Serial.println(elapsedTime); // Should print 6000 (milliseconds)
+     * @endcode
+     */
     unsigned long value();
+
+    /**
+     * @brief Checks if the timer has expired.
+     * 
+     * Determines if the timer has reached or exceeded its preset value without stopping or resetting the timer.
+     * The timer will continue running even after it has expired.
+     * 
+     * @return Returns true if the timer has reached or exceeded its preset value, otherwise returns false.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer;
+     * myTimer.start(3000); // Start the timer with a 3 second preset
+     * delay(3500); // Wait for 3.5 seconds
+     * if (myTimer.isExpired()) {
+     *     Serial.println("Timer has expired.");
+     * } else {
+     *     Serial.println("Timer is still running.");
+     * }
+     * @endcode
+     */
     bool isExpired();
+
+    /**
+     * @brief Checks if the timer is currently running.
+     * 
+     * Determines if the timer is active and counting time. The timer will continue running even after reaching
+     * its preset value, and this method will return true as long as the timer has not been stopped or paused.
+     * 
+     * @return Returns true if the timer is running, otherwise returns false.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * Timer myTimer;
+     * myTimer.start(5000); // Start the timer with a 5 second preset
+     * delay(6000); // Wait for 6 seconds
+     * if (myTimer.isRunning()) {
+     *     Serial.println("Timer is running.");
+     * } else {
+     *     Serial.println("Timer is not running.");
+     * }
+     * @endcode
+     */
     bool isRunning();
 
 private:
@@ -560,4 +901,441 @@ private:
     unsigned long presetValue;
     unsigned long elapsedTime;
 };
+
+
+/*  **********************************************
+    =============================================
+            MQTT Device Interfacing Entities
+    =============================================
+    **********************************************   */
+/*      Define MQTT interface type strings (when not creating a custom sensor or binary sensor)      */
+// Control Interfaces
+#define SWITCH                    "switch"
+#define BUTTON                    "button"
+#define VALVE                     "valve"
+
+#define INTEGER_VALUE             "integer"
+#define FLOAT_VALUE               "float"
+
+// Sensor Interfaces
+#define WATER_CONSUMPTION_SENSOR  "water"
+#define VOLUME_STORAGE_SENSOR     "volume_storage"
+#define VOLUME_FLOW_RATE_SENSOR   "volume_flow_rate"
+#define PRECIPITATION_INTENSITY_SENSOR "precipitation_intensity"
+
+struct BinarySensorEntity {
+  std::string devClass              = "";
+  std::string icon                  = "";   // Optional
+};
+
+struct SensorEntity {
+  std::string devClass              = "";
+  std::string unit_of_measurement   = "";
+  int display_precision             = 0;
+  std::string icon                  = "";   // Optional
+};
+
+/*  *****************
+    Create Interface
+    *****************   */
+/**
+ * @brief Exposes a specified pin as an MQTT entity.
+ * 
+ * This function exposes a specified pin on the EQSP32 as an MQTT entity, allowing it to be monitored and controlled through Home Assistant. 
+ * The entity is created based on the pin's mode, and its properties are set accordingly.
+ * 
+ * @param name The name assigned to the MQTT entity.
+ * @param pin The pin number to be exposed as an MQTT entity.
+ * 
+ * @note This function will only create the entity if the pin is local for the respective EQSP32 mode (master, slave1, etc).
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.createInterface("Temperature Sensor", EQ_PIN_3); // Exposes pin 3 as a temperature sensor entity if this module is in master mode
+ * @endcode
+ */
+void createInterface(std::string name, int pin);
+
+/**
+ * @brief Creates a custom MQTT entity for Home Assistant based on a predefined type.
+ * Check "MQTT interface type strings" definitions for the implemented types.
+ * 
+ * This function creates a custom MQTT entity for Home Assistant using a predefined type. The EQSP32 implementation automatically decides 
+ * the specific entity type (e.g., sensor, switch) based on the type name provided.
+ * 
+ * @param name The name assigned to the MQTT entity.
+ * @param type The predefined type of the MQTT entity. Valid types are: "switch", "button", "valve", "integer", "float", 
+ *   "water", "volume_storage", "volume_flow_rate", "precipitation_intensity".
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.createInterface("Water Consumption", "water"); // Creates a custom water consumption sensor entity
+ * @endcode
+ */
+void createInterface(std::string name, std::string type);
+
+/**
+ * @brief Creates a binary sensor MQTT entity for Home Assistant.
+ * 
+ * This function creates a binary sensor MQTT entity for Home Assistant, which users can read and update for automation purposes. 
+ * The properties of the binary sensor are specified by the user.
+ * 
+ * @param name The name assigned to the MQTT entity.
+ * @param sensor The properties of the binary sensor entity, including:
+ * - `devClass`: The device class of the binary sensor (e.g., "battery", "battery_charging", "carbon_monoxide", "cold", "connectivity", 
+ *   "door", "garage_door", "gas", "heat", "light", "lock", "moisture", "motion", "moving", "occupancy", "opening", "plug", "power", 
+ *   "presence", "problem", "running", "safety", "smoke", "sound", "tamper", "update", "vibration", "window").
+ * - `icon` (Optional): The icon to use for the binary sensor entity.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * BinarySensorEntity doorSensor;
+ * doorSensor.devClass = "door";
+ * doorSensor.icon = "mdi:door";    // Optional, if omitted the default devClass icon will be used automatically
+ * eqsp32.createInterface("Front Door", doorSensor); // Creates a binary sensor entity for the front door
+ * @endcode
+ */
+void createInterface(std::string name, BinarySensorEntity sensor);
+
+/**
+ * @brief Creates a sensor MQTT entity for Home Assistant.
+ * 
+ * This function creates a sensor MQTT entity for Home Assistant, which users can read and update for automation purposes. 
+ * The properties of the sensor are specified by the user.
+ * 
+ * @param name The name assigned to the MQTT entity.
+ * @param sensor The properties of the sensor entity, including:
+ * - `devClass`: The device class of the sensor (e.g., "apparent_power", "aqi", "atmospheric_pressure", "battery", 
+ *   "carbon_dioxide", "carbon_monoxide", "current", "data_rate", "data_size", "date", "distance", "duration", "energy", 
+ *   "energy_storage", "enum", "frequency", "gas", "humidity", "illuminance", "irradiance", "moisture", "monetary", 
+ *   "nitrogen_dioxide", "nitrogen_monoxide", "nitrous_oxide", "ozone", "ph", "pm1", "pm25", "pm10", "power_factor", 
+ *   "power", "precipitation", "precipitation_intensity", "pressure", "reactive_power", "signal_strength", "sound_pressure", 
+ *   "speed", "sulphur_dioxide", "temperature", "timestamp", "volatile_organic_compounds", 
+ *   "volatile_organic_compounds_parts", "voltage", "volume", "volume_flow_rate", "volume_storage", "water", "weight", 
+ *   "wind_speed").
+ * - `unit_of_measurement`: The unit of measurement for the sensor's value (e.g., "°C", "%").
+ * - `display_precision`: The number of decimal places to display for the sensor's value.
+ * - `icon` (Optional): The icon to use for the sensor entity.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * SensorEntity temperatureSensor;
+ * temperatureSensor.devClass = "temperature";
+ * temperatureSensor.unit_of_measurement = "°C";
+ * temperatureSensor.display_precision = 1;
+ * temperatureSensor.icon = "mdi:thermometer";
+ * eqsp32.createInterface("Room Temperature", temperatureSensor); // Creates a temperature sensor entity for the room
+ * @endcode
+ */
+void createInterface(std::string name, SensorEntity sensor);
+
+/*  *****************
+    Read Interface
+    *****************   */
+/**
+ * @brief Reads the value of a specified interface.
+ * 
+ * This template function reads the value of a specified interface by its name. It can return values of different types
+ * (e.g., bool, int, float, std::string) based on the type specified during the function call. If the interface is not found,
+ * or the value is empty or not in the value map, it returns a default value based on the type.
+ * 
+ * @tparam T The type of the value to be read (e.g., bool, int, float, std::string).
+ * @param interfaceName The name of the interface to read the value from.
+ * @return The value of the interface, or a default value if the interface is not found or the value is empty.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * bool boolValue = eqsp32.readInterface<bool>("MyBoolInterface"); // Reads a boolean value from the interface
+ * int intValue = eqsp32.readInterface<int>("MyIntInterface"); // Reads an integer value from the interface
+ * float floatValue = eqsp32.readInterface<float>("MyFloatInterface"); // Reads a float value from the interface
+ * std::string stringValue = eqsp32.readInterface<std::string>("MyStringInterface"); // Reads a string value from the interface
+ * @endcode
+ */
+template <typename T> T readInterface(const std::string& interfaceName);        // Template function to read the interface
+
+// Specific functions
+/**
+ * @brief Reads a boolean value from a specified interface.
+ * 
+ * This function reads a boolean value from a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to read the boolean value from.
+ * @return The boolean value of the interface, or false if the interface is not found or the value is empty.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * bool boolValue = eqsp32.readInterfaceBOOL("MyBoolInterface"); // Reads a boolean value from the interface
+ * @endcode
+ */
+bool readInterfaceBOOL(const std::string& interfaceName);
+
+/**
+ * @brief Reads an integer value from a specified interface.
+ * 
+ * This function reads an integer value from a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to read the integer value from.
+ * @return The integer value of the interface, or 0 if the interface is not found or the value is empty.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * int intValue = eqsp32.readInterfaceINT("MyIntInterface"); // Reads an integer value from the interface
+ * @endcode
+ */
+int readInterfaceINT(const std::string& interfaceName);
+
+/**
+ * @brief Reads a float value from a specified interface.
+ * 
+ * This function reads a float value from a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to read the float value from.
+ * @return The float value of the interface, or 0.0f if the interface is not found or the value is empty.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * float floatValue = eqsp32.readInterfaceFLOAT("MyFloatInterface"); // Reads a float value from the interface
+ * @endcode
+ */
+float readInterfaceFLOAT(const std::string& interfaceName);
+
+/**
+ * @brief Reads a string value from a specified interface.
+ * 
+ * This function reads a string value from a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to read the string value from.
+ * @return The string value of the interface, or an empty string if the interface is not found or the value is empty.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * String stringValue = eqsp32.readInterfaceSTRING("MyStringInterface"); // Reads a string value from the interface
+ * @endcode
+ */
+String readInterfaceSTRING(const std::string& interfaceName);
+
+/*  *****************
+    Update Interface
+    *****************   */
+/**
+ * @brief Updates the state of a specified interface.
+ * 
+ * This template function updates the state of a specified interface by its name.
+ * If the interface is not found, an appropriate message is logged.
+ * 
+ * @tparam T The type of the value to be updated (e.g., bool, int, float, std::string).
+ * @param interfaceName The name of the interface to update the state for.
+ * @param value The new state value to update the interface with.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.updateInterface("MyBoolInterface", true); // Updates the boolean value of the interface
+ * eqsp32.updateInterface("MyIntInterface", 42); // Updates the integer value of the interface
+ * eqsp32.updateInterface("MyFloatInterface", 3.14f); // Updates the float value of the interface
+ * eqsp32.updateInterface("MyStringInterface", "New Value"); // Updates the string value of the interface
+ * @endcode
+ */
+template <typename T> void updateInterface(const std::string& interfaceName, T value);       // Function to write to the interface
+
+/**
+ * @brief Updates the boolean value of a specified interface.
+ * 
+ * This function updates the boolean value of a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to update the boolean value for.
+ * @param value The new boolean value to update the interface with.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.updateInterfaceBOOL("MyBoolInterface", true); // Updates the boolean value of the interface
+ * @endcode
+ */
+void updateInterfaceBOOL(const std::string& interfaceName, bool value);
+
+/**
+ * @brief Updates the integer value of a specified interface.
+ * 
+ * This function updates the integer value of a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to update the integer value for.
+ * @param value The new integer value to update the interface with.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.updateInterfaceINT("MyIntInterface", 42); // Updates the integer value of the interface
+ * @endcode
+ */
+void updateInterfaceINT(const std::string& interfaceName, int value);
+
+/**
+ * @brief Updates the float value of a specified interface.
+ * 
+ * This function updates the float value of a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to update the float value for.
+ * @param value The new float value to update the interface with.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.updateInterfaceFLOAT("MyFloatInterface", 3.14f); // Updates the float value of the interface
+ * @endcode
+ */
+void updateInterfaceFLOAT(const std::string& interfaceName, float value);
+
+/**
+ * @brief Updates the string value of a specified interface.
+ * 
+ * This function updates the string value of a specified interface by its name.
+ * 
+ * @param interfaceName The name of the interface to update the string value for.
+ * @param value The new string value to update the interface with.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.updateInterfaceSTRING("MyStringInterface", "New Value"); // Updates the string value of the interface
+ * @endcode
+ */
+void updateInterfaceSTRING(const std::string& interfaceName, std::string value);
+
+/*  *****************
+    Write Interface
+    *****************   */
+/**
+ * @brief Writes a command to a specified interface and publishes the new state to MQTT.
+ * 
+ * This template function writes a command to a specified interface by its name. The new state value
+ * is published to the MQTT topic associated with the interface. If the interface is not found, an appropriate 
+ * message is logged.
+ * 
+ * @tparam T The type of the value to be written (e.g., bool, int, float, std::string).
+ * @param interfaceName The name of the interface to write the command to.
+ * @param value The new command value to write to the interface.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.writeInterface("MyBoolInterface", true); // Writes a boolean command to the interface
+ * eqsp32.writeInterface("MyIntInterface", 42); // Writes an integer command to the interface
+ * eqsp32.writeInterface("MyFloatInterface", 3.14f); // Writes a float command to the interface
+ * eqsp32.writeInterface("MyStringInterface", "New Value"); // Writes a string command to the interface
+ * @endcode
+ */
+template <typename T> void writeInterface(const std::string& interfaceName, T value);       // Function to write to the interface
+
+/**
+ * @brief Writes a boolean command to a specified interface and publishes the new state to MQTT.
+ * 
+ * This function writes a boolean command to a specified interface by its name and publishes the new state to the associated MQTT topic.
+ * 
+ * @param interfaceName The name of the interface to write the boolean command to.
+ * @param value The new boolean command value to write to the interface.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.writeInterfaceBOOL("MyBoolInterface", true); // Writes a boolean command to the interface
+ * @endcode
+ */
+void writeInterfaceBOOL(const std::string& interfaceName, bool value);
+
+/**
+ * @brief Writes an integer command to a specified interface and publishes the new state to MQTT.
+ * 
+ * This function writes an integer command to a specified interface by its name and publishes the new state to the associated MQTT topic.
+ * 
+ * @param interfaceName The name of the interface to write the integer command to.
+ * @param value The new integer command value to write to the interface.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.writeInterfaceINT("MyIntInterface", 42); // Writes an integer command to the interface
+ * @endcode
+ */
+void writeInterfaceINT(const std::string& interfaceName, int value);
+
+/**
+ * @brief Writes a float command to a specified interface and publishes the new state to MQTT.
+ * 
+ * This function writes a float command to a specified interface by its name and publishes the new state to the associated MQTT topic.
+ * 
+ * @param interfaceName The name of the interface to write the float command to.
+ * @param value The new float command value to write to the interface.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.writeInterfaceFLOAT("MyFloatInterface", 3.14f); // Writes a float command to the interface
+ * @endcode
+ */
+void writeInterfaceFLOAT(const std::string& interfaceName, float value);
+
+/**
+ * @brief Writes a string command to a specified interface and publishes the new state to MQTT.
+ * 
+ * This function writes a string command to a specified interface by its name and publishes the new state to the associated MQTT topic.
+ * 
+ * @param interfaceName The name of the interface to write the string command to.
+ * @param value The new string command value to write to the interface.
+ * 
+ * @example
+ * Usage example:
+ * 
+ * @code
+ * EQSP32 eqsp32;
+ * eqsp32.writeInterfaceSTRING("MyStringInterface", "New Value"); // Writes a string command to the interface
+ * @endcode
+ */
+void writeInterfaceSTRING(const std::string& interfaceName, std::string value);
+
 #endif

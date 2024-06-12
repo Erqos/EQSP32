@@ -4,6 +4,12 @@
 
 EQSP32	KEYWORD1
 EQSP32Configs	KEYWORD1
+Timer	KEYWORD1
+BinarySensorEntity	KEYWORD1
+SensorEntity	KEYWORD1
+EQSerialMode	KEYWORD1
+PinMode	KEYWORD1
+TrigMode	KEYWORD1
 
 ###########################################
 # EQSP32 Library Functions (KEYWORD2)
@@ -14,6 +20,7 @@ begin	KEYWORD2
 
 # Pin Usage and Configuration
 pinMode	KEYWORD2
+readMode	KEYWORD2
 configPOUTFreq	KEYWORD2
 configSWT	KEYWORD2
 configTIN	KEYWORD2
@@ -38,6 +45,25 @@ readUserBool	KEYWORD2
 writeUserBool	KEYWORD2
 readUserInt	KEYWORD2
 writeUserInt	KEYWORD2
+
+# Timer Functions
+start	KEYWORD2
+stop	KEYWORD2
+pause	KEYWORD2
+reset	KEYWORD2
+value	KEYWORD2
+isExpired	KEYWORD2
+isRunning	KEYWORD2
+
+# Interface Functions
+createInterface	KEYWORD2
+readInterface	KEYWORD2
+updateInterface	KEYWORD2
+writeInterface	KEYWORD2
+
+# Utility Functions
+isLocalPin	KEYWORD2
+isExpModulePin	KEYWORD2
 
 ######################################
 # EQSP32 Constants (LITERAL1)
@@ -87,3 +113,14 @@ RS232	LITERAL1
 RS232_INV	LITERAL1
 RS485_TX	LITERAL1
 RS485_RX	LITERAL1
+
+# Sensor and Interface Types
+SWITCH	LITERAL1
+BUTTON	LITERAL1
+VALVE	LITERAL1
+INTEGER_VALUE	LITERAL1
+FLOAT_VALUE	LITERAL1
+WATER_CONSUMPTION_SENSOR	LITERAL1
+VOLUME_STORAGE_SENSOR	LITERAL1
+VOLUME_FLOW_RATE_SENSOR	LITERAL1
+PRECIPITATION_INTENSITY_SENSOR	LITERAL1
