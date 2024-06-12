@@ -947,14 +947,13 @@ struct SensorEntity {
  * @param name The name assigned to the MQTT entity.
  * @param pin The pin number to be exposed as an MQTT entity.
  * 
- * @note This function will only create the entity if the pin is local for the respective EQSP32 mode (master, slave1, etc).
+ * @note This function will only create the entity if the pin is local for the respective EQSP32 mode (master, slave 1, etc).
  * 
  * @example
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.createInterface("Temperature Sensor", EQ_PIN_3); // Exposes pin 3 as a temperature sensor entity if this module is in master mode
+ * createInterface("Temperature Sensor", EQ_PIN_3); // Exposes pin 3 as a temperature sensor entity if this module is in master mode
  * @endcode
  */
 void createInterface(std::string name, int pin);
@@ -974,8 +973,7 @@ void createInterface(std::string name, int pin);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.createInterface("Water Consumption", "water"); // Creates a custom water consumption sensor entity
+ * createInterface("Water Consumption", "water"); // Creates a custom water consumption sensor entity
  * @endcode
  */
 void createInterface(std::string name, std::string type);
@@ -997,11 +995,10 @@ void createInterface(std::string name, std::string type);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
  * BinarySensorEntity doorSensor;
  * doorSensor.devClass = "door";
  * doorSensor.icon = "mdi:door";    // Optional, if omitted the default devClass icon will be used automatically
- * eqsp32.createInterface("Front Door", doorSensor); // Creates a binary sensor entity for the front door
+ * createInterface("Front Door", doorSensor); // Creates a binary sensor entity for the front door
  * @endcode
  */
 void createInterface(std::string name, BinarySensorEntity sensor);
@@ -1030,13 +1027,12 @@ void createInterface(std::string name, BinarySensorEntity sensor);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
  * SensorEntity temperatureSensor;
  * temperatureSensor.devClass = "temperature";
  * temperatureSensor.unit_of_measurement = "°C";
  * temperatureSensor.display_precision = 1;
  * temperatureSensor.icon = "mdi:thermometer";
- * eqsp32.createInterface("Room Temperature", temperatureSensor); // Creates a temperature sensor entity for the room
+ * createInterface("Room Temperature", temperatureSensor); // Creates a temperature sensor entity for the room
  * @endcode
  */
 void createInterface(std::string name, SensorEntity sensor);
@@ -1059,11 +1055,10 @@ void createInterface(std::string name, SensorEntity sensor);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * bool boolValue = eqsp32.readInterface<bool>("MyBoolInterface"); // Reads a boolean value from the interface
- * int intValue = eqsp32.readInterface<int>("MyIntInterface"); // Reads an integer value from the interface
- * float floatValue = eqsp32.readInterface<float>("MyFloatInterface"); // Reads a float value from the interface
- * std::string stringValue = eqsp32.readInterface<std::string>("MyStringInterface"); // Reads a string value from the interface
+ * bool boolValue = readInterface<bool>("MyBoolInterface"); // Reads a boolean value from the interface
+ * int intValue = readInterface<int>("MyIntInterface"); // Reads an integer value from the interface
+ * float floatValue = readInterface<float>("MyFloatInterface"); // Reads a float value from the interface
+ * std::string stringValue = readInterface<std::string>("MyStringInterface"); // Reads a string value from the interface
  * @endcode
  */
 template <typename T> T readInterface(const std::string& interfaceName);        // Template function to read the interface
@@ -1081,8 +1076,7 @@ template <typename T> T readInterface(const std::string& interfaceName);        
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * bool boolValue = eqsp32.readInterfaceBOOL("MyBoolInterface"); // Reads a boolean value from the interface
+ * bool boolValue = readInterfaceBOOL("MyBoolInterface"); // Reads a boolean value from the interface
  * @endcode
  */
 bool readInterfaceBOOL(const std::string& interfaceName);
@@ -1099,8 +1093,7 @@ bool readInterfaceBOOL(const std::string& interfaceName);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * int intValue = eqsp32.readInterfaceINT("MyIntInterface"); // Reads an integer value from the interface
+ * int intValue = readInterfaceINT("MyIntInterface"); // Reads an integer value from the interface
  * @endcode
  */
 int readInterfaceINT(const std::string& interfaceName);
@@ -1117,8 +1110,7 @@ int readInterfaceINT(const std::string& interfaceName);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * float floatValue = eqsp32.readInterfaceFLOAT("MyFloatInterface"); // Reads a float value from the interface
+ * float floatValue = readInterfaceFLOAT("MyFloatInterface"); // Reads a float value from the interface
  * @endcode
  */
 float readInterfaceFLOAT(const std::string& interfaceName);
@@ -1135,8 +1127,7 @@ float readInterfaceFLOAT(const std::string& interfaceName);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * String stringValue = eqsp32.readInterfaceSTRING("MyStringInterface"); // Reads a string value from the interface
+ * String stringValue = readInterfaceSTRING("MyStringInterface"); // Reads a string value from the interface
  * @endcode
  */
 String readInterfaceSTRING(const std::string& interfaceName);
@@ -1158,11 +1149,10 @@ String readInterfaceSTRING(const std::string& interfaceName);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.updateInterface("MyBoolInterface", true); // Updates the boolean value of the interface
- * eqsp32.updateInterface("MyIntInterface", 42); // Updates the integer value of the interface
- * eqsp32.updateInterface("MyFloatInterface", 3.14f); // Updates the float value of the interface
- * eqsp32.updateInterface("MyStringInterface", "New Value"); // Updates the string value of the interface
+ * updateInterface("MyBoolInterface", true); // Updates the boolean value of the interface
+ * updateInterface("MyIntInterface", 42); // Updates the integer value of the interface
+ * updateInterface("MyFloatInterface", 3.14f); // Updates the float value of the interface
+ * updateInterface("MyStringInterface", "New Value"); // Updates the string value of the interface
  * @endcode
  */
 template <typename T> void updateInterface(const std::string& interfaceName, T value);       // Function to write to the interface
@@ -1179,8 +1169,7 @@ template <typename T> void updateInterface(const std::string& interfaceName, T v
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.updateInterfaceBOOL("MyBoolInterface", true); // Updates the boolean value of the interface
+ * updateInterfaceBOOL("MyBoolInterface", true); // Updates the boolean value of the interface
  * @endcode
  */
 void updateInterfaceBOOL(const std::string& interfaceName, bool value);
@@ -1197,8 +1186,7 @@ void updateInterfaceBOOL(const std::string& interfaceName, bool value);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.updateInterfaceINT("MyIntInterface", 42); // Updates the integer value of the interface
+ * updateInterfaceINT("MyIntInterface", 42); // Updates the integer value of the interface
  * @endcode
  */
 void updateInterfaceINT(const std::string& interfaceName, int value);
@@ -1215,8 +1203,7 @@ void updateInterfaceINT(const std::string& interfaceName, int value);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.updateInterfaceFLOAT("MyFloatInterface", 3.14f); // Updates the float value of the interface
+ * updateInterfaceFLOAT("MyFloatInterface", 3.14f); // Updates the float value of the interface
  * @endcode
  */
 void updateInterfaceFLOAT(const std::string& interfaceName, float value);
@@ -1233,8 +1220,7 @@ void updateInterfaceFLOAT(const std::string& interfaceName, float value);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.updateInterfaceSTRING("MyStringInterface", "New Value"); // Updates the string value of the interface
+ * updateInterfaceSTRING("MyStringInterface", "New Value"); // Updates the string value of the interface
  * @endcode
  */
 void updateInterfaceSTRING(const std::string& interfaceName, std::string value);
@@ -1257,11 +1243,10 @@ void updateInterfaceSTRING(const std::string& interfaceName, std::string value);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.writeInterface("MyBoolInterface", true); // Writes a boolean command to the interface
- * eqsp32.writeInterface("MyIntInterface", 42); // Writes an integer command to the interface
- * eqsp32.writeInterface("MyFloatInterface", 3.14f); // Writes a float command to the interface
- * eqsp32.writeInterface("MyStringInterface", "New Value"); // Writes a string command to the interface
+ * writeInterface("MyBoolInterface", true); // Writes a boolean command to the interface
+ * writeInterface("MyIntInterface", 42); // Writes an integer command to the interface
+ * writeInterface("MyFloatInterface", 3.14f); // Writes a float command to the interface
+ * writeInterface("MyStringInterface", "New Value"); // Writes a string command to the interface
  * @endcode
  */
 template <typename T> void writeInterface(const std::string& interfaceName, T value);       // Function to write to the interface
@@ -1278,8 +1263,7 @@ template <typename T> void writeInterface(const std::string& interfaceName, T va
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.writeInterfaceBOOL("MyBoolInterface", true); // Writes a boolean command to the interface
+ * writeInterfaceBOOL("MyBoolInterface", true); // Writes a boolean command to the interface
  * @endcode
  */
 void writeInterfaceBOOL(const std::string& interfaceName, bool value);
@@ -1296,8 +1280,7 @@ void writeInterfaceBOOL(const std::string& interfaceName, bool value);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.writeInterfaceINT("MyIntInterface", 42); // Writes an integer command to the interface
+ * writeInterfaceINT("MyIntInterface", 42); // Writes an integer command to the interface
  * @endcode
  */
 void writeInterfaceINT(const std::string& interfaceName, int value);
@@ -1314,8 +1297,7 @@ void writeInterfaceINT(const std::string& interfaceName, int value);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.writeInterfaceFLOAT("MyFloatInterface", 3.14f); // Writes a float command to the interface
+ * writeInterfaceFLOAT("MyFloatInterface", 3.14f); // Writes a float command to the interface
  * @endcode
  */
 void writeInterfaceFLOAT(const std::string& interfaceName, float value);
@@ -1332,8 +1314,7 @@ void writeInterfaceFLOAT(const std::string& interfaceName, float value);
  * Usage example:
  * 
  * @code
- * EQSP32 eqsp32;
- * eqsp32.writeInterfaceSTRING("MyStringInterface", "New Value"); // Writes a string command to the interface
+ * writeInterfaceSTRING("MyStringInterface", "New Value"); // Writes a string command to the interface
  * @endcode
  */
 void writeInterfaceSTRING(const std::string& interfaceName, std::string value);
