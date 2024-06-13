@@ -25,7 +25,6 @@ EQSP32 eqsp32;
 void setup() {
     EQSP32Configs configs;
     configs.devSystemID = "SYSTEM_ID";                       // Needed for custom mobile app and for MQTT
-    configs.mqttDiscovery = true;                            // Optional, may be configured from EQConnect app
 
     eqsp32.begin(configs, true);
 
