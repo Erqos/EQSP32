@@ -378,7 +378,6 @@ public:
      * bool success = EQSP32::pinValue(3, 750); // Sets the value of pin 3 to 75%
      */
     bool pinValue(int pinIndex, int value);
-    // bool pinValue(IoTIndexCode iotIndex, int pinIndex, int value);
 
     /**
      * @brief Reads the value of a specified pin on the EQSP32.
@@ -410,7 +409,6 @@ public:
      * int value = EQSP32::readPin(3, ON_RISING); // Reads the digital value of pin 3, considering ON_RISING trigger mode
      */
     int readPin(int pinIndex, TrigMode trigMode = STATE);    // New method to read pin values
-    // int readPin(IoTIndexCode iotIndex, int pinIndex, TrigMode trigMode = STATE);
 
     /**
      * @brief Configures the PWM frequency for the Power PWM Output (POUT) mode on the EQSP32.
@@ -440,7 +438,6 @@ public:
      * bool success = EQSP32::configPOUTFreq(500); // Sets the PWM frequency for Power PWM Output (POUT) mode to 500 Hz
      */
     bool configPOUTFreq(int freq);
-    // bool configPOUTFreq(IoTIndexCode iotIndex, int freq);
 
         // Special mode configurations
     /**
@@ -460,7 +457,6 @@ public:
      * bool success = EQSP32::configSWT(3, 150); // Configures pin 3 for Switch (SWT) mode with a debounce time of 150 milliseconds
      */
     bool configSWT(int pinIndex, int debounceTime_ms = 100);
-    // bool configSWT(IoTIndexCode iotIndex, int pinIndex, int debounceTime_ms = 100);
 
     /**
      * @brief Configures the Temperature Input (TIN) mode on the EQSP32.
@@ -480,7 +476,6 @@ public:
      * bool success = EQSP32::configTIN(2, 4000, 12000); // Configures pin 2 for Temperature Input (TIN) mode with a beta coefficient of 4000 and a reference resistance of 12000 ohms
      */
     bool configTIN(int pinIndex, int beta = 3988, int referenceResistance = 10000);
-    // bool configTIN(IoTIndexCode iotIndex, int pinIndex, int beta = 3988, int referenceResistance = 10000);
 
     /**
      * @brief Configures the Relay (RELAY) mode on the EQSP32.
@@ -502,7 +497,6 @@ public:
      * bool success = EQSP32::configRELAY(4, 300, 1500); // Configures pin 4 for Relay (RELAY) mode with a hold value of 300 and a derate delay of 1500 milliseconds
      */    
     bool configRELAY(int pinIndex, int holdValue = 500, int derateDelay = 1000);
-    // bool configRELAY(IoTIndexCode iotIndex, int pinIndex, int holdValue = 500, int derateDelay = 1000);
 
         // Read/Write database user variables
     /**
