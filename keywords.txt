@@ -66,6 +66,25 @@ isLocalPin	KEYWORD2
 isExpModulePin	KEYWORD2
 
 ######################################
+# EQSP32 Macros (KEYWORD2)
+#######################################
+# EQ main/aux module configuration
+MASTER          KEYWORD2
+SLAVE_1         KEYWORD2
+SLAVE_2         KEYWORD2
+SLAVE_3         KEYWORD2
+SLAVE_4         KEYWORD2
+
+EQ_MAIN         KEYWORD2
+EQ_AUX_1        KEYWORD2
+EQ_AUX_2        KEYWORD2
+EQ_AUX_3        KEYWORD2
+EQ_AUX_4        KEYWORD2
+
+# EQxM (EQ expansion modules)
+EQXPH           KEYWORD2
+
+######################################
 # EQSP32 Constants (LITERAL1)
 #######################################
 
@@ -105,6 +124,7 @@ SWT	LITERAL1
 TIN	LITERAL1
 RELAY	LITERAL1
 RAIN	LITERAL1
+PH	LITERAL1
 STATE	LITERAL1
 ON_RISING	LITERAL1
 ON_FALLING	LITERAL1

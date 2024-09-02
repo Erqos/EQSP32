@@ -52,20 +52,30 @@
 #define IS_CAN_PIN(p)       (p == EQ_CAN_TX || p == EQ_CAN_RX ? true : false)
 
 // EQSP32 IoT expansion modules - Masks
-#define PIN_SHIFT(id)       (id << 0)
-#define MODULE_SHIFT(id)    (id << 16)
-#define SLAVE_SHIFT(id)     (id << 24)
+#define PIN_SHIFT(id)           ((id) << 0)       // Bits 0-7
+                                                // Bits 8-11 (Reserved)
+#define MODULE_IDX_SHIFT(id)    ((id) << 12)      // Bits 12-15
+#define MODULE_SHIFT(id)        ((id) << 16)      // Bits 16-23
+#define SLAVE_SHIFT(id)         ((id) << 24)      // Bits 24-31
 
-#define PIN_MASK            PIN_SHIFT(0xFF)
-#define MODULE_MASK         MODULE_SHIFT(0xFF)
-#define SLAVE_MASK          SLAVE_SHIFT(0xFF)
+#define PIN_MASK            PIN_SHIFT(0xFF)         // 8-bit
+#define MODULE_IDX_MASK     MODULE_IDX_SHIFT(0xF)   // 4-bit        (EQX Modules)
+#define MODULE_MASK         MODULE_SHIFT(0xFF)      // 8-bit        (EQX Modules)
+#define SLAVE_MASK          SLAVE_SHIFT(0xFF)       // 8-bit
+
+#define PIN_UNSHIFT(id)         (((id) & PIN_MASK) >> 0)
+#define MODULE_IDX_UNSHIFT(id)  (((id) & MODULE_IDX_MASK) >> 12)    // (EQX Modules)
+#define MODULE_UNSHIFT(id)      (((id) & MODULE_MASK) >> 16)        // (EQX Modules)
+#define SLAVE_UNSHIFT(id)       (((id) & SLAVE_MASK) >> 24)
 
 // EQSP32 IoT expansion modules - Index Codes
-#define MASTER(pin)         (SLAVE_SHIFT(0) | (pin & MODULE_MASK) | (pin & PIN_MASK))
-#define SLAVE_1(pin)        (SLAVE_SHIFT(1) | (pin & MODULE_MASK) | (pin & PIN_MASK))
-#define SLAVE_2(pin)        (SLAVE_SHIFT(2) | (pin & MODULE_MASK) | (pin & PIN_MASK))
-#define SLAVE_3(pin)        (SLAVE_SHIFT(3) | (pin & MODULE_MASK) | (pin & PIN_MASK))
-#define SLAVE_4(pin)        (SLAVE_SHIFT(4) | (pin & MODULE_MASK) | (pin & PIN_MASK))
+#define COMBINED_MASK       (MODULE_MASK | MODULE_IDX_MASK | PIN_MASK)
+#define MASTER(pin)         (SLAVE_SHIFT(0) | (pin & MODULE_MASK) | (pin & MODULE_IDX_MASK) | (pin & PIN_MASK))
+#define SLAVE_1(pin)        (SLAVE_SHIFT(1) | (pin & MODULE_MASK) | (pin & MODULE_IDX_MASK) | (pin & PIN_MASK))
+// #define SLAVE_1(pin)        (SLAVE_SHIFT(1) | (pin & COMBINED_MASK))
+#define SLAVE_2(pin)        (SLAVE_SHIFT(2) | (pin & MODULE_MASK) | (pin & MODULE_IDX_MASK) | (pin & PIN_MASK))
+#define SLAVE_3(pin)        (SLAVE_SHIFT(3) | (pin & MODULE_MASK) | (pin & MODULE_IDX_MASK) | (pin & PIN_MASK))
+#define SLAVE_4(pin)        (SLAVE_SHIFT(4) | (pin & MODULE_MASK) | (pin & MODULE_IDX_MASK) | (pin & PIN_MASK))
 
 #define EQ_MAIN(pin)        MASTER(pin)
 #define EQ_AUX_1(pin)       SLAVE_1(pin)
@@ -73,7 +83,22 @@
 #define EQ_AUX_3(pin)       SLAVE_3(pin)
 #define EQ_AUX_4(pin)       SLAVE_4(pin)
 
-#define PH_EXP(pin)         (MODULE_SHIFT(1) | (pin & PIN_MASK))
+// (EQX Modules)
+#define MAX_MODULE_TYPES    0xFF
+#define EQXIO_ID            0x01        // ADIO module
+#define EQXSTEP_ID          0x02        // Stepper driver module
+#define EQXPH_ID            0x10        // PH sensor module
+#define EQXTC_ID            0x20        // Thermocouple sensor module
+#define EQXPT_ID            0x30        // PT100/PT1000 sensor module
+#define EQXLC_ID            0x40        // Load cell sensor module
+#define EQXCS_ID            0x50        // Current sensor module
+
+
+#define EQXIO(idx, pin)     (MODULE_SHIFT(EQXIO_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXPH(idx, pin)     (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+// #define EQXPH(pin)          (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(1)) | (pin & PIN_MASK))
+// #define EQXPH_1(pin)        EQXPH(pin)
+// #define EQXPH_2(pin)        (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(2)) | (pin & PIN_MASK))
 
 // EQSP32 pin modes
 enum PinMode : uint8_t {
@@ -90,6 +115,8 @@ enum PinMode : uint8_t {
     TIN,                // Special AIN mode, automatic temperature convertion
     RELAY,              // Special POUT mode, starts with set power and after set time drops to holding power
     RAIN,               // Relative analog input, this returns a value of 0-1000 representing the % of read value versus the VOut reference voltage
+
+    PH      = 0x10,     // pH measurement       (EQX Modules)
 };
 
 enum TrigMode {
@@ -253,7 +280,7 @@ public:
      * 
      * @code
      * EQSP32 eqsp32;
-     * uint32_t pinCode = PH_EXP(EQ_PIN_3); // Example pin code for expansion module
+     * uint32_t pinCode = EQXPH(EQ_PIN_3); // Example pin code for expansion module
      * bool isExpPin = eqsp32.isExpModulePin(pinCode);
      * if (isExpPin) {
      *     Serial.println("The pin is on an expansion module.");
@@ -281,6 +308,7 @@ public:
      * int rs232Rx = eqsp32.getPin(EQ_RS232_RX); // Gets the ESP32 pin number for RS232 transmission.
      */
     int getPin(int pinIndex);
+
 
         // EQ pin configurations
     /**
@@ -699,6 +727,9 @@ public:
     void printLocalTime();
     int getLocalHour();
     int getLocalMins();
+    std::string getFormattedLocalTime();
+    long getUnixTimestamp();
+    std::string getFormattedUnixTimestamp();
 
 private:
     class EQ_Private;       // Forward declaration of the nested private class
