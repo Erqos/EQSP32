@@ -85,10 +85,10 @@
 
 // (EQX Modules)
 #define MAX_MODULE_TYPES    0xFF
-#define EQXIO_ID            0x01        // ADIO module
+#define EQXIO_ID            0x01        // ADIO module                  (Comming soon)
 #define EQXSTEP_ID          0x02        // Stepper driver module
-#define EQXPH_ID            0x10        // PH sensor module
-#define EQXTC_ID            0x20        // Thermocouple sensor module
+#define EQXPH_ID            0x10        // PH sensor module             (Supported)
+#define EQXTC_ID            0x20        // Thermocouple sensor module   (Coming soon)
 #define EQXPT_ID            0x30        // PT100/PT1000 sensor module
 #define EQXLC_ID            0x40        // Load cell sensor module
 #define EQXCS_ID            0x50        // Current sensor module
@@ -204,6 +204,8 @@ class EQ_Private;       // Forward declaration of the nested private class
  */
 class EQSP32 {
 public:
+    HardwareSerial& Serial;  // Reference to Serial2
+
     EQSP32();
     ~EQSP32();
 
