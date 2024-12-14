@@ -119,11 +119,21 @@ enum PinMode : uint8_t {
     PH      = 0x10,     // pH measurement       (EQX Modules)
 };
 
+#define TIN_OPEN_CIRCUIT    -9999       // Open circuit detected
+#define TIN_SHORT_CIRCUIT   9999        // Short circuit detected
+
 enum TrigMode {
     STATE,
     ON_RISING,
     ON_FALLING,
     ON_TOGGLE
+};
+
+enum EQ_WifiStatus : uint8_t {
+    EQ_WF_DISCONNECTED  = 0,
+    EQ_WF_CONNECTED,
+    EQ_WF_RECONNECTING,
+    EQ_WF_SCANNING
 };
 
 // CAN Bus
@@ -153,12 +163,16 @@ typedef struct
 {
     std::string databaseURL = "";
     std::string databaseAPIKey = "";
+    std::string mqttBrokerIp = "homeassistant.local";
+    int mqttBrokerPort = 1883;
+    std::string devSystemIcon = "";     // Link to developer's system icon for IoT UI display
     std::string devSystemID = "";        // Developer system ID (assigned by the system's developer, hardcoded by developer, READ ONLY access by external app)
     std::string userDevName = "";        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
     std::string wifiSSID = "";          // (Optional) Default network SSID
     std::string wifiPassword = "";      // (Optional) Default network password
     bool relaySequencer = false;
     bool mqttDiscovery = false;
+    bool customMobileApp = true;        // set to true for custom mobile app, false for Erqos IoT solution, false will be the default in next releases
 } EQSP32Configs;
 
 
@@ -235,8 +249,8 @@ public:
     void begin(EQSP32Configs eq_configs = {}, bool verboseEnabled = false);
     void begin(bool verboseEnabled);
     
-    // Only for self-testing, not to be used by the user
-    void begin(std::string command);
+    // Only for self-testing, NOT to be used by the user
+    void beginTest(std::string command);
 
     /**
      * @brief Checks if a given pin identifier corresponds to a local pin on the EQSP32 module.
@@ -505,7 +519,7 @@ public:
      * Usage example:
      * bool success = EQSP32::configTIN(2, 4000, 12000); // Configures pin 2 for Temperature Input (TIN) mode with a beta coefficient of 4000 and a reference resistance of 12000 ohms
      */
-    bool configTIN(int pinIndex, int beta = 3988, int referenceResistance = 10000);
+    bool configTIN(int pinIndex, int beta = 3435, int referenceResistance = 10000);
 
     /**
      * @brief Configures the Relay (RELAY) mode on the EQSP32.
@@ -621,44 +635,46 @@ public:
     
         // Buzzer
     /**
-     * @brief Turns on the buzzer with a specified frequency.
+     * @brief Activates the buzzer with a specified frequency and optional duration.
      * 
-     * This function activates the buzzer on the EQSP32 module at a given frequency within a specified range. 
-     * The frequency can be set between 50Hz and 20KHz. If the frequency is outside this 
-     * range, the buzzer will not be activated. The default frequency, if not specified, is 500 Hz.
+     * This function turns on the buzzer on the EQSP32 module at a specified frequency within a valid range. 
+     * The frequency can be set between 50 Hz and 20 KHz. If the frequency is outside this range, the 
+     * buzzer will not be activated. Additionally, a duration can be specified for how long the buzzer 
+     * will remain on. If no duration is specified (default is 0), the buzzer will remain on until the 
+     * `buzzerOff()` function is called.
      * 
-     * @param freq The frequency in Hertz (Hz) at which to operate the buzzer. The valid range is from 50Hz 
-     *        to 20KHz. The default frequency is 500 Hz.
+     * @param freq The frequency in Hertz (Hz) at which to operate the buzzer. The valid range is 50 Hz 
+     *        to 20 KHz. The default frequency is 500 Hz.
+     * @param duration_ms The duration in milliseconds for which the buzzer should remain on. If set to 0 
+     *        (or not specified), the buzzer will remain on indefinitely until `buzzerOff()` is called. 
+     *        The default value is 0.
      * 
-     * @note The function will not activate the buzzer if the frequency is outside the specified range of 50Hz-20KHz.
-     *      To deactivate the buzzer, function buzzerOff() should be called.
+     * @note If the frequency is outside the valid range of 50 Hz-20 KHz, the buzzer will not be activated.
      * 
      * @example
      * Usage example:
      * EQSP32 eqsp32;
-     * eqsp32.buzzerOn(); // Turns on the buzzer at the default frequency of 500 Hz
+     * eqsp32.buzzerOn(); // Activates the buzzer at the default frequency of 500 Hz, stays on indefinitely
      * delay(200);
-     * eqsp32.buzzerOn(1000); // Turns on the buzzer at 1000 Hz after 200ms have passed
-     * delay(200);
-     * eqsp32.buzzerOff();     // Turns off the buzzer after 200ms
+     * eqsp32.buzzerOn(1000, 500); // Activates the buzzer at 1000 Hz for 500 ms after 200 ms delay
+     * delay(600);
+     * eqsp32.buzzerOff(); // Deactivates the buzzer (in this case, no effect since the buzzer turned off after 500 ms)
      */
-    void buzzerOn(uint32_t freq = 500);
+    void buzzerOn(uint32_t freq = 500, uint32_t duration_ms = 0);
 
     /**
      * @brief Turns off the buzzer on the EQSP32 module.
      * 
-     * This function deactivates the buzzer by setting its duty cycle to 0%. It ensures that the buzzer is 
-     * completely turned off and not emitting any sound. This is achieved by reinitializing the MCPWM 
-     * (Motor Control Pulse Width Modulation) unit used for the buzzer control with a duty cycle of 0%.
-     * 
-     * @note This function should be called to turn off the buzzer, after it has been activated using `buzzerOn()`.
+     * This function stops the buzzer and ensures it is no longer emitting any sound. 
+     * It should be used to turn off the buzzer after it has been activated with `buzzerOn()`, 
+     * especially if no duration was specified or if the buzzer needs to be turned off early.
      * 
      * @example
      * Usage example:
      * EQSP32 eqsp32;
-     * eqsp32.buzzerOn(1000);  // Turns on the buzzer at 1000 Hz
+     * eqsp32.buzzerOn(1000, 0);  // Turns on the buzzer at 1000 Hz, remains on indefinitely
      * delay(200);
-     * eqsp32.buzzerOff();     // Turns off the buzzer after 200ms
+     * eqsp32.buzzerOff();        // Turns off the buzzer after 200 ms
      */
     void buzzerOff();
 
@@ -726,9 +742,101 @@ public:
     bool transmitCANFrame(CanMessage canMessage);
     bool receiveCANFrame(CanMessage &canMessage);
 
+    // TODO add function description
+    EQ_WifiStatus getWiFiStatus();
+
+    /**
+     * @brief Prints the current local time to the serial output in a human-readable format.
+     * 
+     * This function retrieves the current local time using the configured NTP server or default system time if the NTP is not synchronized. 
+     * If the local time cannot be obtained, it logs an error message. Otherwise, it prints the time in the format:
+     * "Day, Month Date Year Hour:Minute:Second".
+     * 
+     * @note The function uses a timeout to retrieve the local time. If synchronization fails within this time, 
+     *       the function logs an error and exits.
+     * 
+     * @attention Ensure that the NTP server has been successfully configured and the system time is synchronized to get an accurate timestamp.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * eqsp32.printLocalTime(); // Prints the current local time or logs an error if unavailable.
+     */
     void printLocalTime();
+
+    /**
+     * @brief Checks if the local time is synchronized with the NTP server.
+     * 
+     * This function verifies whether the local system time has been synchronized with the NTP server
+     * or if only the default system time is available.
+     * 
+     * @return true if the local time is synchronized with the NTP server, false only default time is available.
+     * 
+     * @attention This function is helpful to determine whether the timestamps used for logging and operations are accurate.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     // Proceed with time-dependent operations
+     * } else {
+     *     // Handle unsynchronized time
+     * }
+     */
+    bool isLocalTimeSynced();
+
+    /**
+     * @brief Retrieves the current hour from the local time.
+     * 
+     * This function returns the current hour (0-23) based on the local system time. If the local time cannot be 
+     * obtained within the timeout, the function logs an error and returns 0.
+     * 
+     * @return The current local hour (0-23) if successful, 0 otherwise.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * int hour = eqsp32.getLocalHour();
+     * ::Serial.printf("Current Hour: %d\n", hour);
+     * 
+     * @example
+     * // Check synchronization first
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int hour = eqsp32.getLocalHour();
+     *     ::Serial.printf("Current Hour: %d\n", hour);
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual local hour.");
+     * }
+     */
     int getLocalHour();
+
+        /**
+     * @brief Retrieves the current minutes from the local time.
+     * 
+     * This function returns the current minutes (0-59) based on the local system time. If the local time cannot be 
+     * obtained within the timeout, the function logs an error and returns 0.
+     * 
+     * @return The current local minutes (0-59) if successful, 0 otherwise.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * int mins = eqsp32.getLocalMins();
+     * ::Serial.printf("Current Minutes: %d\n", mins);
+     * 
+     * @example
+     * // Check synchronization first
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int mins = eqsp32.getLocalMins();
+     *     ::Serial.printf("Current Minutes: %d\n", mins);
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual local minutes.");
+     * }
+     */
     int getLocalMins();
+
     std::string getFormattedLocalTime();
     long getUnixTimestamp();
     std::string getFormattedUnixTimestamp();
@@ -930,420 +1038,84 @@ private:
 };
 
 
-/*  **********************************************
-    =============================================
-            MQTT Device Interfacing Entities
-    =============================================
-    **********************************************   */
-/*      Define MQTT interface type strings (when not creating a custom sensor or binary sensor)      */
-// Control Interfaces
-#define SWITCH                    "switch"
-#define BUTTON                    "button"
-#define VALVE                     "valve"
-
-#define INTEGER_VALUE             "integer"
-#define FLOAT_VALUE               "float"
-
-// Sensor Interfaces
-#define WATER_CONSUMPTION_SENSOR  "water"
-#define VOLUME_STORAGE_SENSOR     "volume_storage"
-#define VOLUME_FLOW_RATE_SENSOR   "volume_flow_rate"
-#define PRECIPITATION_INTENSITY_SENSOR "precipitation_intensity"
-
-struct BinarySensorEntity {
-  std::string devClass              = "";
-  std::string icon                  = "";   // Optional
-};
-
-struct SensorEntity {
-  std::string devClass              = "";
-  std::string unit_of_measurement   = "";
-  int display_precision             = 0;
-  std::string icon                  = "";   // Optional
-};
-
-/*  *****************
-    Create Interface
-    *****************   */
-/**
- * @brief Exposes a specified pin as an MQTT entity.
- * 
- * This function exposes a specified pin on the EQSP32 as an MQTT entity, allowing it to be monitored and controlled through Home Assistant. 
- * The entity is created based on the pin's mode, and its properties are set accordingly.
- * 
- * @param name The name assigned to the MQTT entity.
- * @param pin The pin number to be exposed as an MQTT entity.
- * 
- * @note This function will only create the entity if the pin is local for the respective EQSP32 mode (master, slave 1, etc).
- * 
- * @example
- * Usage example:
- * 
- * @code
- * createInterface("Temperature Sensor", EQ_PIN_3); // Exposes pin 3 as a temperature sensor entity if this module is in master mode
- * @endcode
- */
-void createInterface(std::string name, int pin);
+/*  ***********************************************
+     ---   ---   ---   ---   ---   ---   ---   ---
+    MQTT Device Interfacing Entities    (Beta EQ IoT app)
+     ---   ---   ---   ---   ---   ---   ---   ---
+    ***********************************************   */
+// Supported icons for `iconType` parameter
+#define WATER_ICON          "water"
+#define FIRE_ICON           "fire"
+#define AIR_ICON            "air"
+#define BUBBLES_ICON        "bubbles"
+#define BATTERY_ICON        "battery"
+#define MULTIMETER_ICON     "multimeter"
+#define CALENDAR_ICON       "calendar"
+#define PUMP_ICON           "pump"
+#define SPRINKLER_ICON      "sprinkler"
+#define FIRE_SPRINKLER_ICON "fire_sprinkler"
+#define IRRIGATION_ICON     "irrigation"
+#define DOOR_ICON           "door"
+#define GARAGE_DOOR_ICON    "garage_door"
+#define WINDOW_ICON         "window"
+#define SHUTTER_ICON        "shutter"
+#define SPEED_ICON          "speed"
+#define DISTANCE_ICON       "distance"
+#define ANGLE_ICON          "angle"
+#define FORCE_ICON          "force"
+#define TORQUE_ICON         "torque"
+#define PRESSURE_ICON       "pressure"
+#define TEMPERATURE_ICON    "temperature"
+#define HUMIDITY_ICON       "humidity"
+#define LIGHT_ICON          "light"
+#define SOUND_ICON          "sound"
+#define AIR_QUALITY_ICON    "air_quality"
+#define ELECTRICAL_MEASUREMENTS_ICON    "electrical_measurements"
+#define TIME_ICON           "time"
+#define DURATION_ICON       "duration"
+#define PH_ICON             "ph"
+#define CO2_ICON            "co2"
 
 /**
- * @brief Creates a custom MQTT entity for Home Assistant based on a predefined type.
- * Check "MQTT interface type strings" definitions for the implemented types.
  * 
- * This function creates a custom MQTT entity for Home Assistant using a predefined type. The EQSP32 implementation automatically decides 
- * the specific entity type (e.g., sensor, switch) based on the type name provided.
+ *      Control entities (Same as configuration entities for Home Assistant)
  * 
- * @param name The name assigned to the MQTT entity.
- * @param type The predefined type of the MQTT entity. Valid types are: "switch", "button", "valve", "integer", "float", 
- *   "water", "volume_storage", "volume_flow_rate", "precipitation_intensity".
- * 
- * @example
- * Usage example:
- * 
- * @code
- * createInterface("Water Consumption", "water"); // Creates a custom water consumption sensor entity
- * @endcode
  */
-void createInterface(std::string name, std::string type);
+void createControl_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
+void createControl_Value(std::string name, std::string accessLevel, std::string iconType, int minValue, int maxValue, int decimals, std::string unit, std::string iconType_HA = "");
+
+bool readControl_Switch(const std::string& name);
+float readControl_Value(const std::string& name);
+
+bool updateControl_Switch(const std::string& name, bool value);
+bool updateControl_Value(const std::string& name, float value);
 
 /**
- * @brief Creates a binary sensor MQTT entity for Home Assistant.
  * 
- * This function creates a binary sensor MQTT entity for Home Assistant, which users can read and update for automation purposes. 
- * The properties of the binary sensor are specified by the user.
+ *      Display entities
  * 
- * @param name The name assigned to the MQTT entity.
- * @param sensor The properties of the binary sensor entity, including:
- * - `devClass`: The device class of the binary sensor (e.g., "battery", "battery_charging", "carbon_monoxide", "cold", "connectivity", 
- *   "door", "garage_door", "gas", "heat", "light", "lock", "moisture", "motion", "moving", "occupancy", "opening", "plug", "power", 
- *   "presence", "problem", "running", "safety", "smoke", "sound", "tamper", "update", "vibration", "window").
- * - `icon` (Optional): The icon to use for the binary sensor entity.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * BinarySensorEntity doorSensor;
- * doorSensor.devClass = "door";
- * doorSensor.icon = "mdi:door";    // Optional, if omitted the default devClass icon will be used automatically
- * createInterface("Front Door", doorSensor); // Creates a binary sensor entity for the front door
- * @endcode
  */
-void createInterface(std::string name, BinarySensorEntity sensor);
+void createDisplay_BinarySensor(std::string name, std::string accessLevel, std::string iconType, std::string onType, std::string iconType_HA = "", std::string binSensorType_HA = "");
+void createDisplay_Sensor(std::string name, std::string accessLevel, std::string iconType, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
+
+bool readDisplay_BinarySensor(const std::string& name);
+float readDisplay_Sensor(const std::string& name);
+
+bool updateDisplay_BinarySensor(const std::string& name, bool value);
+bool updateDisplay_Sensor(const std::string& name, float value);
 
 /**
- * @brief Creates a sensor MQTT entity for Home Assistant.
  * 
- * This function creates a sensor MQTT entity for Home Assistant, which users can read and update for automation purposes. 
- * The properties of the sensor are specified by the user.
+ *      Configuration entities (Same as control entities for Home Assistant)
  * 
- * @param name The name assigned to the MQTT entity.
- * @param sensor The properties of the sensor entity, including:
- * - `devClass`: The device class of the sensor (e.g., "apparent_power", "aqi", "atmospheric_pressure", "battery", 
- *   "carbon_dioxide", "carbon_monoxide", "current", "data_rate", "data_size", "date", "distance", "duration", "energy", 
- *   "energy_storage", "enum", "frequency", "gas", "humidity", "illuminance", "irradiance", "moisture", "monetary", 
- *   "nitrogen_dioxide", "nitrogen_monoxide", "nitrous_oxide", "ozone", "ph", "pm1", "pm25", "pm10", "power_factor", 
- *   "power", "precipitation", "precipitation_intensity", "pressure", "reactive_power", "signal_strength", "sound_pressure", 
- *   "speed", "sulphur_dioxide", "temperature", "timestamp", "volatile_organic_compounds", 
- *   "volatile_organic_compounds_parts", "voltage", "volume", "volume_flow_rate", "volume_storage", "water", "weight", 
- *   "wind_speed").
- * - `unit_of_measurement`: The unit of measurement for the sensor's value (e.g., "°C", "%").
- * - `display_precision`: The number of decimal places to display for the sensor's value.
- * - `icon` (Optional): The icon to use for the sensor entity.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * SensorEntity temperatureSensor;
- * temperatureSensor.devClass = "temperature";
- * temperatureSensor.unit_of_measurement = "°C";
- * temperatureSensor.display_precision = 1;
- * temperatureSensor.icon = "mdi:thermometer";
- * createInterface("Room Temperature", temperatureSensor); // Creates a temperature sensor entity for the room
- * @endcode
  */
-void createInterface(std::string name, SensorEntity sensor);
+void createConfig_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
+void createConfig_Value(std::string name, std::string accessLevel, std::string iconType, int minValue, int maxValue, int decimals, std::string unit, std::string iconType_HA = "");
 
-/*  *****************
-    Read Interface
-    *****************   */
-/**
- * @brief Reads the value of a specified interface.
- * 
- * This template function reads the value of a specified interface by its name. It can return values of different types
- * (e.g., bool, int, float, std::string) based on the type specified during the function call. If the interface is not found,
- * or the value is empty or not in the value map, it returns a default value based on the type.
- * 
- * @tparam T The type of the value to be read (e.g., bool, int, float, std::string).
- * @param interfaceName The name of the interface to read the value from.
- * @return The value of the interface, or a default value if the interface is not found or the value is empty.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * bool boolValue = readInterface<bool>("MyBoolInterface"); // Reads a boolean value from the interface
- * int intValue = readInterface<int>("MyIntInterface"); // Reads an integer value from the interface
- * float floatValue = readInterface<float>("MyFloatInterface"); // Reads a float value from the interface
- * std::string stringValue = readInterface<std::string>("MyStringInterface"); // Reads a string value from the interface
- * @endcode
- */
-template <typename T> T readInterface(const std::string& interfaceName);        // Template function to read the interface
+bool readConfig_Switch(const std::string& name);
+float readConfig_Value(const std::string& name);
 
-// Specific functions
-/**
- * @brief Reads a boolean value from a specified interface.
- * 
- * This function reads a boolean value from a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to read the boolean value from.
- * @return The boolean value of the interface, or false if the interface is not found or the value is empty.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * bool boolValue = readInterfaceBOOL("MyBoolInterface"); // Reads a boolean value from the interface
- * @endcode
- */
-bool readInterfaceBOOL(const std::string& interfaceName);
-
-/**
- * @brief Reads an integer value from a specified interface.
- * 
- * This function reads an integer value from a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to read the integer value from.
- * @return The integer value of the interface, or 0 if the interface is not found or the value is empty.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * int intValue = readInterfaceINT("MyIntInterface"); // Reads an integer value from the interface
- * @endcode
- */
-int readInterfaceINT(const std::string& interfaceName);
-
-/**
- * @brief Reads a float value from a specified interface.
- * 
- * This function reads a float value from a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to read the float value from.
- * @return The float value of the interface, or 0.0f if the interface is not found or the value is empty.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * float floatValue = readInterfaceFLOAT("MyFloatInterface"); // Reads a float value from the interface
- * @endcode
- */
-float readInterfaceFLOAT(const std::string& interfaceName);
-
-/**
- * @brief Reads a string value from a specified interface.
- * 
- * This function reads a string value from a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to read the string value from.
- * @return The string value of the interface, or an empty string if the interface is not found or the value is empty.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * String stringValue = readInterfaceSTRING("MyStringInterface"); // Reads a string value from the interface
- * @endcode
- */
-String readInterfaceSTRING(const std::string& interfaceName);
-
-/*  *****************
-    Update Interface
-    *****************   */
-/**
- * @brief Updates the state of a specified interface.
- * 
- * This template function updates the state of a specified interface by its name.
- * If the interface is not found, an appropriate message is logged.
- * 
- * @tparam T The type of the value to be updated (e.g., bool, int, float, std::string).
- * @param interfaceName The name of the interface to update the state for.
- * @param value The new state value to update the interface with.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * updateInterface("MyBoolInterface", true); // Updates the boolean value of the interface
- * updateInterface("MyIntInterface", 42); // Updates the integer value of the interface
- * updateInterface("MyFloatInterface", 3.14f); // Updates the float value of the interface
- * updateInterface("MyStringInterface", "New Value"); // Updates the string value of the interface
- * @endcode
- */
-template <typename T> void updateInterface(const std::string& interfaceName, T value);       // Function to write to the interface
-
-/**
- * @brief Updates the boolean value of a specified interface.
- * 
- * This function updates the boolean value of a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to update the boolean value for.
- * @param value The new boolean value to update the interface with.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * updateInterfaceBOOL("MyBoolInterface", true); // Updates the boolean value of the interface
- * @endcode
- */
-void updateInterfaceBOOL(const std::string& interfaceName, bool value);
-
-/**
- * @brief Updates the integer value of a specified interface.
- * 
- * This function updates the integer value of a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to update the integer value for.
- * @param value The new integer value to update the interface with.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * updateInterfaceINT("MyIntInterface", 42); // Updates the integer value of the interface
- * @endcode
- */
-void updateInterfaceINT(const std::string& interfaceName, int value);
-
-/**
- * @brief Updates the float value of a specified interface.
- * 
- * This function updates the float value of a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to update the float value for.
- * @param value The new float value to update the interface with.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * updateInterfaceFLOAT("MyFloatInterface", 3.14f); // Updates the float value of the interface
- * @endcode
- */
-void updateInterfaceFLOAT(const std::string& interfaceName, float value);
-
-/**
- * @brief Updates the string value of a specified interface.
- * 
- * This function updates the string value of a specified interface by its name.
- * 
- * @param interfaceName The name of the interface to update the string value for.
- * @param value The new string value to update the interface with.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * updateInterfaceSTRING("MyStringInterface", "New Value"); // Updates the string value of the interface
- * @endcode
- */
-void updateInterfaceSTRING(const std::string& interfaceName, std::string value);
-
-/*  *****************
-    Write Interface
-    *****************   */
-/**
- * @brief Writes a command to a specified interface and publishes the new state to MQTT.
- * 
- * This template function writes a command to a specified interface by its name. The new state value
- * is published to the MQTT topic associated with the interface. If the interface is not found, an appropriate 
- * message is logged.
- * 
- * @tparam T The type of the value to be written (e.g., bool, int, float, std::string).
- * @param interfaceName The name of the interface to write the command to.
- * @param value The new command value to write to the interface.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * writeInterface("MyBoolInterface", true); // Writes a boolean command to the interface
- * writeInterface("MyIntInterface", 42); // Writes an integer command to the interface
- * writeInterface("MyFloatInterface", 3.14f); // Writes a float command to the interface
- * writeInterface("MyStringInterface", "New Value"); // Writes a string command to the interface
- * @endcode
- */
-template <typename T> void writeInterface(const std::string& interfaceName, T value);       // Function to write to the interface
-
-/**
- * @brief Writes a boolean command to a specified interface and publishes the new state to MQTT.
- * 
- * This function writes a boolean command to a specified interface by its name and publishes the new state to the associated MQTT topic.
- * 
- * @param interfaceName The name of the interface to write the boolean command to.
- * @param value The new boolean command value to write to the interface.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * writeInterfaceBOOL("MyBoolInterface", true); // Writes a boolean command to the interface
- * @endcode
- */
-void writeInterfaceBOOL(const std::string& interfaceName, bool value);
-
-/**
- * @brief Writes an integer command to a specified interface and publishes the new state to MQTT.
- * 
- * This function writes an integer command to a specified interface by its name and publishes the new state to the associated MQTT topic.
- * 
- * @param interfaceName The name of the interface to write the integer command to.
- * @param value The new integer command value to write to the interface.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * writeInterfaceINT("MyIntInterface", 42); // Writes an integer command to the interface
- * @endcode
- */
-void writeInterfaceINT(const std::string& interfaceName, int value);
-
-/**
- * @brief Writes a float command to a specified interface and publishes the new state to MQTT.
- * 
- * This function writes a float command to a specified interface by its name and publishes the new state to the associated MQTT topic.
- * 
- * @param interfaceName The name of the interface to write the float command to.
- * @param value The new float command value to write to the interface.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * writeInterfaceFLOAT("MyFloatInterface", 3.14f); // Writes a float command to the interface
- * @endcode
- */
-void writeInterfaceFLOAT(const std::string& interfaceName, float value);
-
-/**
- * @brief Writes a string command to a specified interface and publishes the new state to MQTT.
- * 
- * This function writes a string command to a specified interface by its name and publishes the new state to the associated MQTT topic.
- * 
- * @param interfaceName The name of the interface to write the string command to.
- * @param value The new string command value to write to the interface.
- * 
- * @example
- * Usage example:
- * 
- * @code
- * writeInterfaceSTRING("MyStringInterface", "New Value"); // Writes a string command to the interface
- * @endcode
- */
-void writeInterfaceSTRING(const std::string& interfaceName, std::string value);
+bool updateConfig_Switch(const std::string& name, bool value);
+bool updateConfig_Value(const std::string& name, float value);
 
 #endif
