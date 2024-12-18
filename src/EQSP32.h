@@ -85,20 +85,20 @@
 
 // (EQX Modules)
 #define MAX_MODULE_TYPES    0xFF
-#define EQXIO_ID            0x01        // ADIO module                  (Comming soon)
+#define EQXIO_ID            0x01        // ADIO module                  (Supported)
 #define EQXSTEP_ID          0x02        // Stepper driver module
 #define EQXPH_ID            0x10        // PH sensor module             (Supported)
-#define EQXTC_ID            0x20        // Thermocouple sensor module   (Coming soon)
-#define EQXPT_ID            0x30        // PT100/PT1000 sensor module
-#define EQXLC_ID            0x40        // Load cell sensor module
+#define EQXTC_ID            0x20        // Thermocouple sensor module   (Supported)
+#define EQXPT_ID            0x30        // PT100/PT1000 sensor module   (Supported PT100)
+#define EQXCI_ID            0x50        // Current input sensor [4-20mA analog input]
 #define EQXCS_ID            0x50        // Current sensor module
+#define EQXLC_ID            0x60        // Load cell sensor module
 
 
 #define EQXIO(idx, pin)     (MODULE_SHIFT(EQXIO_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #define EQXPH(idx, pin)     (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
-// #define EQXPH(pin)          (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(1)) | (pin & PIN_MASK))
-// #define EQXPH_1(pin)        EQXPH(pin)
-// #define EQXPH_2(pin)        (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(2)) | (pin & PIN_MASK))
+#define EQXTC(idx, pin)     (MODULE_SHIFT(EQXTC_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXPT(idx, pin)     (MODULE_SHIFT(EQXPT_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 
 // EQSP32 pin modes
 enum PinMode : uint8_t {
@@ -117,6 +117,9 @@ enum PinMode : uint8_t {
     RAIN,               // Relative analog input, this returns a value of 0-1000 representing the % of read value versus the VOut reference voltage
 
     PH      = 0x10,     // pH measurement       (EQX Modules)
+    TC,                 // thermocouple         (EQX Modules)
+    PT100_24W,          // PT100 RTD in 2/4 wire configuration      (EQX Modules)
+    PT100_3W,           // PT100 RTD in 3 wire configuration        (EQX Modules)
 };
 
 #define TIN_OPEN_CIRCUIT    -9999       // Open circuit detected
