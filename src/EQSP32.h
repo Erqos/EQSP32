@@ -122,8 +122,26 @@ enum PinMode : uint8_t {
     PT100_3W,           // PT100 RTD in 3 wire configuration        (EQX Modules)
 };
 
+
 #define TIN_OPEN_CIRCUIT    -9999       // Open circuit detected
 #define TIN_SHORT_CIRCUIT   9999        // Short circuit detected
+#define IS_TIN_VALID(value) ((value) != TIN_OPEN_CIRCUIT && (value) != TIN_SHORT_CIRCUIT)
+
+
+#define TC_FAULT_OPEN       0x8001      // Thermocouple open circuit
+#define TC_FAULT_SHORT_GND  0x8002      // Thermocouple shorted to GND
+#define TC_FAULT_SHORT_VCC  0x8004      // Thermocouple shorted to VCC
+#define IS_TC_VALID(value) (((value) & 0xFF8000) != 0x8000)        // Macro to check if a Thermocouple (TC) sensor value is valid (we check if error bit or if negative temperature)
+
+
+#define PT_FAULT_THR_HIGH   0x800080    // PT sensor RTD > High allowed threshold
+#define PT_FAULT_THR_LOW    0x800040    // PT sensor RTD < Low allowed threshold
+#define PT_FAULT_REFIN_LOW  0x800020    // PT sensor REF under expected
+#define PT_FAULT_REFIN_HIGH 0x800010    // PT sensor open circuit or REF over expected
+#define PT_FAULT_RTDIN_LOW  0x800008    // PT sensor M- or I- open, or damaged RTD sensor
+#define PT_FAULT_OVUV       0x800004    // PT sensor Over/Under voltage
+#define IS_PT_VALID(value) (((value) & 0xFF800000) != 0x800000)      // Macro to check if a PT sensor value is valid (we check error bit or if negative temperature)
+
 
 enum TrigMode {
     STATE,
@@ -175,7 +193,7 @@ typedef struct
     std::string wifiPassword = "";      // (Optional) Default network password
     bool relaySequencer = false;
     bool mqttDiscovery = false;
-    bool customMobileApp = true;        // set to true for custom mobile app, false for Erqos IoT solution, false will be the default in next releases
+    bool disableErqosIoT = false;
 } EQSP32Configs;
 
 
@@ -840,6 +858,7 @@ public:
      */
     int getLocalMins();
 
+    long getLocalUnixTimestamp();
     std::string getFormattedLocalTime();
     long getUnixTimestamp();
     std::string getFormattedUnixTimestamp();
@@ -851,17 +870,17 @@ private:
 
 
 /**
- * @brief Timer class for managing timing operations.
+ * @brief EQTimer class for managing timing operations.
  * 
- * The Timer class provides methods to start, stop, pause, reset, and check the status of a timer.
+ * The EQTimer class provides methods to start, stop, pause, reset, and check the status of a timer.
  * It is useful for timing events and managing delays in the EQSP32 application.
  */
-class Timer {
+class EQTimer {
 public:
     /**
-     * @brief Constructs a Timer object with an optional preset value.
+     * @brief Constructs a EQTimer object with an optional preset value.
      * 
-     * Initializes a Timer object, setting an optional preset value for the timer.
+     * Initializes a EQTimer object, setting an optional preset value for the timer.
      * The timer is initially stopped.
      * 
      * @param preset Optional preset value in milliseconds for the timer. Default is 0.
@@ -870,10 +889,10 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer(5000); // Creates a Timer object with a 5 second preset
+     * EQTimer myTimer(5000); // Creates a EQTimer object with a 5 second preset
      * @endcode
      */
-    Timer(unsigned long preset = 0);
+    EQTimer(unsigned long preset = 0);
 
     /**
      * @brief Starts the timer with an optional preset value.
@@ -888,12 +907,12 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer;
+     * EQTimer myTimer;
      * bool started = myTimer.start(3000); // Starts the timer with a 3 second preset
      * if (started) {
-     *     Serial.println("Timer started.");
+     *     Serial.println("EQTimer started.");
      * } else {
-     *     Serial.println("Timer was already running.");
+     *     Serial.println("EQTimer was already running.");
      * }
      * @endcode
      */
@@ -908,7 +927,7 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer;
+     * EQTimer myTimer;
      * myTimer.start(5000); // Start the timer
      * delay(2000); // Wait for 2 seconds
      * myTimer.stop(); // Stop the timer
@@ -925,7 +944,7 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer;
+     * EQTimer myTimer;
      * myTimer.start(5000); // Start the timer
      * delay(2000); // Wait for 2 seconds
      * myTimer.pause(); // Pause the timer
@@ -947,14 +966,14 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer;
+     * EQTimer myTimer;
      * myTimer.start(5000); // Start the timer with a 5 second preset
      * delay(2000); // Wait for 2 seconds
      * bool reset = myTimer.reset(3000); // Reset the timer with a new 3 second preset
      * if (reset) {
-     *     Serial.println("Timer reset successfully.");
+     *     Serial.println("EQTimer reset successfully.");
      * } else {
-     *     Serial.println("Timer was not running.");
+     *     Serial.println("EQTimer was not running.");
      * }
      * @endcode
      */
@@ -972,7 +991,7 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer;
+     * EQTimer myTimer;
      * myTimer.start(10000); // Start the timer with a 10 second preset
      * delay(3000); // Run for 3 seconds
      * myTimer.pause(); // Pause the timer
@@ -998,13 +1017,13 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer;
+     * EQTimer myTimer;
      * myTimer.start(3000); // Start the timer with a 3 second preset
      * delay(3500); // Wait for 3.5 seconds
      * if (myTimer.isExpired()) {
-     *     Serial.println("Timer has expired.");
+     *     Serial.println("EQTimer has expired.");
      * } else {
-     *     Serial.println("Timer is still running.");
+     *     Serial.println("EQTimer is still running.");
      * }
      * @endcode
      */
@@ -1022,13 +1041,13 @@ public:
      * Usage example:
      * 
      * @code
-     * Timer myTimer;
+     * EQTimer myTimer;
      * myTimer.start(5000); // Start the timer with a 5 second preset
      * delay(6000); // Wait for 6 seconds
      * if (myTimer.isRunning()) {
-     *     Serial.println("Timer is running.");
+     *     Serial.println("EQTimer is running.");
      * } else {
-     *     Serial.println("Timer is not running.");
+     *     Serial.println("EQTimer is not running.");
      * }
      * @endcode
      */
@@ -1086,6 +1105,9 @@ private:
  */
 void createControl_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
 void createControl_Value(std::string name, std::string accessLevel, std::string iconType, int minValue, int maxValue, int decimals, std::string unit, std::string iconType_HA = "");
+// Overloads for when developing for HA only
+void createControl_Switch(std::string name, std::string iconType_HA = "");
+void createControl_Value(std::string name, int minValue, int maxValue, int decimals, std::string iconType_HA = "");
 
 bool readControl_Switch(const std::string& name);
 float readControl_Value(const std::string& name);
@@ -1100,6 +1122,9 @@ bool updateControl_Value(const std::string& name, float value);
  */
 void createDisplay_BinarySensor(std::string name, std::string accessLevel, std::string iconType, std::string onType, std::string iconType_HA = "", std::string binSensorType_HA = "");
 void createDisplay_Sensor(std::string name, std::string accessLevel, std::string iconType, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
+// Overloads for when developing for HA only
+void createDisplay_BinarySensor(std::string name, std::string iconType_HA = "", std::string binSensorType_HA = "");
+void createDisplay_Sensor(std::string name, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
 
 bool readDisplay_BinarySensor(const std::string& name);
 float readDisplay_Sensor(const std::string& name);
@@ -1114,6 +1139,9 @@ bool updateDisplay_Sensor(const std::string& name, float value);
  */
 void createConfig_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
 void createConfig_Value(std::string name, std::string accessLevel, std::string iconType, int minValue, int maxValue, int decimals, std::string unit, std::string iconType_HA = "");
+// Overloads for when developing for HA only
+void createConfig_Switch(std::string name, std::string iconType_HA = "");
+void createConfig_Value(std::string name, int minValue, int maxValue, int decimals, std::string iconType_HA = "");
 
 bool readConfig_Switch(const std::string& name);
 float readConfig_Value(const std::string& name);
