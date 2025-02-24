@@ -14,6 +14,9 @@
  * Features:
  * - Temperature measurements in Celsius.
  * - Detection of sensor open or short circuit conditions.
+ *
+ * @author Erqos Technologies
+ * @date 2025-02-20
  */
 
 #include <EQSP32.h>  // Include the EQSP32 library
@@ -27,6 +30,10 @@ EQSP32 eqsp32;
 // Thermistor parameters (in this example NTCLE413E2103F106A was used)
 #define NTC_BETA            3435    // Beta value of the thermistor
 #define NTC_REF_RESISTANCE  10000   // Reference resistance in Ohms
+
+// Error Messages for Sensor Issues
+#define MSG_OPEN_CIRCUIT  "⚠️ OPEN CIRCUIT detected! Sensor disconnected."
+#define MSG_SHORT_CIRCUIT "⚠️ SHORT CIRCUIT detected! Possible wiring issue."
 
 void setup() {
     // Initialize serial communication for debugging
@@ -48,13 +55,14 @@ void loop() {
     Serial.print("Reading TIN: ");
     int tempValue = eqsp32.readPin(TEMPERATURE_SENSOR_PIN);
 
+    // Check for sensor errors
     if (tempValue == TIN_OPEN_CIRCUIT) {
-        Serial.println("OPEN CIRCUIT detected!");
+        Serial.println(MSG_OPEN_CIRCUIT);
     } else if (tempValue == TIN_SHORT_CIRCUIT) {
-        Serial.println("SHORT CIRCUIT detected!");
+        Serial.println(MSG_SHORT_CIRCUIT);
     } else {
-        Serial.print(tempValue / 10.0); // Divide by 10 to convert to Celsius
-        Serial.println(" °C");
+        // Convert to Celsius (since tempValue is in °C * 10)
+        Serial.printf("🌡️ Temperature: %.1f °C\n", tempValue / 10.0);
     }
 
     // Add a small delay for stability
