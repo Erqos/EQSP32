@@ -2,6 +2,8 @@
 #define EQSP32_h
 
 #include <Arduino.h>
+#include <string>
+
 #include "time.h"
 #include <HTTPClient.h>
 
@@ -16,6 +18,9 @@
 
 #define POUT_PATCH(eq, pin, mode)    do {int native = eq.getPin(pin); eq.pinMode(pin, mode); pinMode(native, OUTPUT);} while (0);
 
+/**
+ *      EQSP32 Main unit pin codes
+ */
 // User available pin codes
 #define EQ_PIN_1        1
 #define EQ_PIN_3        3
@@ -50,6 +55,49 @@
 #define IS_RS232_PIN(p)     (p == EQ_RS232_TX || p == EQ_RS232_RX ? true : false)
 #define IS_RS485_PIN(p)     (p >= EQ_RS485_TX && p <= EQ_RS485_EN ? true : false)
 #define IS_CAN_PIN(p)       (p == EQ_CAN_TX || p == EQ_CAN_RX ? true : false)
+
+/**
+ *      EQX - EQSP32 Expansion module pin codes and channels
+ */
+// ==========================
+// EQXTC - Thermocouple Module
+// ==========================
+#define EQXTC_CH_1       1  // Thermocouple channel 1
+#define EQXTC_CH_2       2  // Thermocouple channel 2
+#define EQXTC_CH_3       3  // Thermocouple channel 3
+#define EQXTC_CH_4       4  // Thermocouple channel 4
+#define EQXTC_CH_5       5  // Thermocouple channel 5
+#define EQXTC_CH_6       6  // Thermocouple channel 6
+#define EQXTC_CHANNELS   6  // Total number of channels
+
+// ==========================
+// EQXPT - PT100 RTD Module
+// ==========================
+#define EQXPT_M_1        1  // PT100 Measurement point 1
+#define EQXPT_M_2        2  // PT100 Measurement point 2
+#define EQXPT_CHANNELS   2  // Total number of channels
+
+// ==========================
+// EQXPH - pH Measurement Module
+// ==========================
+#define EQXPH_PH_1       1  // pH measurement channel
+#define EQXPH_CHANNELS   1  // Total number of channels
+
+// ==========================
+// EQXIO - Digital IO Expansion Module
+// ==========================
+#define EQXIO_PIN_1      1  // IO Pin 1
+#define EQXIO_PIN_2      2  // IO Pin 2
+#define EQXIO_PIN_3      3  // IO Pin 3
+#define EQXIO_PIN_4      4  // IO Pin 4
+#define EQXIO_PIN_5      5  // IO Pin 5
+#define EQXIO_PIN_6      6  // IO Pin 6
+#define EQXIO_PIN_7      7  // IO Pin 7
+#define EQXIO_PIN_8      8  // IO Pin 8
+#define EQXIO_PIN_9      9  // IO Pin 9
+#define EQXIO_PIN_10     10 // IO Pin 10
+#define EQXIO_CHANNELS   10 // Total number of channels
+
 
 // EQSP32 IoT expansion modules - Masks
 #define PIN_SHIFT(id)           ((id) << 0)       // Bits 0-7
@@ -186,6 +234,7 @@ typedef struct
     std::string databaseAPIKey = "";
     std::string mqttBrokerIp = "homeassistant.local";
     int mqttBrokerPort = 1883;
+    std::string mqtt_broker_ca = "";    // CA certificate (empty if not required)
     std::string devSystemIcon = "";     // Link to developer's system icon for IoT UI display
     std::string devSystemID = "";        // Developer system ID (assigned by the system's developer, hardcoded by developer, READ ONLY access by external app)
     std::string userDevName = "";        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
@@ -362,7 +411,7 @@ public:
      * - Power PWM Output (POUT): Configures the pin as a power PWM output. The duty will be set using the 'pinValue' function.
      *      //Special Modes
      * - Switch (SWT): Configures the pin as a special digital input mode with debouncing timer.
-     * - Temperature Input (TIN): Configures the pin as a special analog input mode for automatic temperature conversion in celsius.
+     * - Temperature Input (TIN): Configures the pin as a special analog input mode for automatic temperature conversion in celsius * 10 (needs /10.0 to get actual temperature as float with 0.1 precision).
      * - Relay (RELAY): Configures the pin as a special power PWM output mode for relay control. Starts with set power from 'pinValue', and after a set time drops to holding power. Needs to be set to 0 before restarting the start-hold power cycle.
      * - Relative AIN (RAIN): Pin operates in AIN mode and returns the measured voltage relative to 5V Vout in %, 1000 represents 100%.
      * 
@@ -449,13 +498,15 @@ public:
      * 
      * This function allows you to read the value of a pin on the EQSP32, considering different PinModes.
      * For analog input pins (AIN), it returns the analog value in mV.
-     * For temperature input pins (TIN), it calculates and returns the temperature in Celsius.
+     * For temperature input pins (TIN), it calculates and returns the temperature in Celsius * 10 (need to divide by 10.0 to get actual value with 0.1 precision).
      * For other pin modes, it reads the digital state of the pin and considers the specified trigger mode (default is STATE).
      * 
      * @param pinIndex The index of the pin to read the value from (1 to 16).
      * @param trigMode The trigger mode to consider when reading digital pins. Options are STATE, ON_RISING, ON_FALLING, and ON_TOGGLE. Default is STATE.
      * 
-     * @return The pin value based on the PinMode. For AIN, it returns the analog value in mV. For TIN, it returns the temperature in Celsius. For other PinModes, it returns 1 if the pin state is HIGH, and 0 if the pin state is LOW. Returns -1 if the pin index is invalid.
+     * @return The pin value based on the PinMode. For AIN, it returns the analog value in mV. For TIN, it returns the temperature in Celsius * 10.
+     * For other input type PinModes, it returns 1 if the pin state is HIGH, and 0 if the pin state is LOW. Returns -1 if the pin index is invalid.
+     * For output type PinModes, it returns the user set pinValue. Ex. if eqsp32.pinValue(2, 500), eqsp32.readPin(2) will return 500 (assuming it is set in one of the oupute modes).
      * 
      * @attention The trigger mode is applicable only to digital pins. For analog and temperature pins, the trigger mode is ignored.
      * For TIN pins, the temperature calculation assumes the EQ's 5V is used as reference.
@@ -1062,10 +1113,40 @@ private:
 
 /*  ***********************************************
      ---   ---   ---   ---   ---   ---   ---   ---
-    MQTT Device Interfacing Entities    (Beta EQ IoT app)
+    MQTT Device Interfacing Entities for Home Assistant (Node-RED or other MQTT platforms)
      ---   ---   ---   ---   ---   ---   ---   ---
     ***********************************************   */
-// Supported icons for `iconType` parameter
+/**
+ * 
+ *      Control and Display entities for Home Assistant integration over MQTT
+ *      {These entities will read/write MQTT topics which may be used in other integration like Node-RED}
+ * 
+ */
+// Overloads for when developing for HA only
+void createControl_Switch(std::string name, std::string iconType_HA = "");
+void createControl_Value(std::string name, int minValue, int maxValue, int decimals, std::string iconType_HA = "");
+
+bool readControl_Switch(const std::string& name);
+float readControl_Value(const std::string& name);
+
+bool updateControl_Switch(const std::string& name, bool value);
+bool updateControl_Value(const std::string& name, float value);
+
+// Overloads for when developing for HA only
+// binSensorType_HA (which could be omitted) could be one of the binary sensor types listed at https://www.home-assistant.io/integrations/binary_sensor/
+void createDisplay_BinarySensor(std::string name, std::string iconType_HA = "", std::string binSensorType_HA = "");
+// sensorType_HA (which could be omitted) could be one of the sensor types listed at https://www.home-assistant.io/integrations/sensor/
+void createDisplay_Sensor(std::string name, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
+
+bool readDisplay_BinarySensor(const std::string& name);
+float readDisplay_Sensor(const std::string& name);
+
+bool updateDisplay_BinarySensor(const std::string& name, bool value);
+bool updateDisplay_Sensor(const std::string& name, float value);
+
+
+
+// Supported icons for `iconType` parameter (Beta EQ IoT app)
 #define WATER_ICON          "water"
 #define FIRE_ICON           "fire"
 #define AIR_ICON            "air"
@@ -1098,43 +1179,28 @@ private:
 #define PH_ICON             "ph"
 #define CO2_ICON            "co2"
 
+
 /**
  * 
- *      Control entities (Same as configuration entities for Home Assistant)
+ *      Control entities (Same as configuration entities for Home Assistant) (Beta EQ IoT app)
  * 
  */
 void createControl_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
 void createControl_Value(std::string name, std::string accessLevel, std::string iconType, int minValue, int maxValue, int decimals, std::string unit, std::string iconType_HA = "");
-// Overloads for when developing for HA only
-void createControl_Switch(std::string name, std::string iconType_HA = "");
-void createControl_Value(std::string name, int minValue, int maxValue, int decimals, std::string iconType_HA = "");
 
-bool readControl_Switch(const std::string& name);
-float readControl_Value(const std::string& name);
-
-bool updateControl_Switch(const std::string& name, bool value);
-bool updateControl_Value(const std::string& name, float value);
 
 /**
  * 
- *      Display entities
+ *      Display entities (Beta EQ IoT app)
  * 
  */
 void createDisplay_BinarySensor(std::string name, std::string accessLevel, std::string iconType, std::string onType, std::string iconType_HA = "", std::string binSensorType_HA = "");
 void createDisplay_Sensor(std::string name, std::string accessLevel, std::string iconType, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
-// Overloads for when developing for HA only
-void createDisplay_BinarySensor(std::string name, std::string iconType_HA = "", std::string binSensorType_HA = "");
-void createDisplay_Sensor(std::string name, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
 
-bool readDisplay_BinarySensor(const std::string& name);
-float readDisplay_Sensor(const std::string& name);
-
-bool updateDisplay_BinarySensor(const std::string& name, bool value);
-bool updateDisplay_Sensor(const std::string& name, float value);
 
 /**
  * 
- *      Configuration entities (Same as control entities for Home Assistant)
+ *      Configuration entities (Same as control entities for Home Assistant) (Beta EQ IoT app)
  * 
  */
 void createConfig_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
