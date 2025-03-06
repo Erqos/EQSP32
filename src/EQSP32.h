@@ -205,6 +205,16 @@ enum EQ_WifiStatus : uint8_t {
     EQ_WF_SCANNING
 };
 
+enum EQ_WeekDay : uint8_t {
+    EQ_SUNDAY = 0,
+    EQ_MONDAY,    // 1
+    EQ_TUESDAY,   // 2
+    EQ_WEDNESDAY, // 3
+    EQ_THURSDAY,  // 4
+    EQ_FRIDAY,    // 5
+    EQ_SATURDAY   // 6
+};
+
 // CAN Bus
 #define CanMessage      twai_message_t
 
@@ -855,6 +865,203 @@ public:
      */
     bool isLocalTimeSynced();
 
+    
+    /**
+     * @brief Retrieves the current weekday from the local time.
+     * 
+     * This function returns the current day of the week based on the local system time. 
+     * If the local time cannot be obtained within the timeout, the function logs an error and returns EQ_SUNDAY.
+     * 
+     * The return value corresponds to the EQ_WeekDay enum, where:
+     * - EQ_SUNDAY = 0
+     * - EQ_MONDAY = 1
+     * - EQ_TUESDAY = 2
+     * - EQ_WEDNESDAY = 3
+     * - EQ_THURSDAY = 4
+     * - EQ_FRIDAY = 5
+     * - EQ_SATURDAY = 6
+     * 
+     * @return The current local weekday as an EQ_WeekDay enum. If unsuccessful, returns EQ_SUNDAY.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * EQ_WeekDay weekday = eqsp32.getLocalWeekDay();
+     * ::Serial.printf("Current Weekday (Numeric): %d\n", weekday);
+     * 
+     * @example
+     * // Check if today is Monday
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     if (eqsp32.getLocalWeekDay() == EQ_MONDAY) {
+     *         ::Serial.println("Today is Monday!");
+     *     } else {
+     *         ::Serial.println("It is not Monday.");
+     *     }
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual weekday.");
+     * }
+     */
+    EQ_WeekDay getLocalWeekDay();
+
+    /**
+     * @brief Retrieves the current day of the year from the local time.
+     * 
+     * This function returns the current day of the year (1-366) based on the local system time.
+     * If the local time cannot be obtained within the timeout, the function logs an error and returns 0.
+     * 
+     * The returned value represents the day count from the start of the year:
+     * - January 1st returns 1
+     * - December 31st returns 365 (or 366 in a leap year)
+     * 
+     * @return The current local day of the year (1-366). If unsuccessful, returns 0.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int yearDay = eqsp32.getLocalYearDay();
+     *     ::Serial.printf("Today is the %dth day of the year.\n", yearDay);
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual day of the year.");
+     * }
+     * 
+     * @example
+     * // Check if today is the first day of the year
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     if (eqsp32.getLocalYearDay() == 1) {
+     *         ::Serial.println("Happy New Year!");
+     *     } else {
+     *         ::Serial.printf("We are on day %d of the year.\n", eqsp32.getLocalYearDay());
+     *     }
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual day of the year.");
+     * }
+     */
+    int getLocalYearDay();
+
+
+    /**
+     * @brief Retrieves the current year from the local time.
+     * 
+     * This function returns the current year based on the local system time.
+     * If the local time cannot be obtained within the timeout, the function logs an error and returns 0.
+     * 
+     * The returned value is the full four-digit year (e.g., 2024).
+     * 
+     * @return The current local year (e.g., 2024). If unsuccessful, returns 0.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int year = eqsp32.getLocalYear();
+     *     ::Serial.printf("Current Year: %d\n", year);
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual year.");
+     * }
+     * 
+     * @example
+     * // Check if the current year is valid and synchronized
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int year = eqsp32.getLocalYear();
+     *     if (year > 2000) {
+     *         ::Serial.printf("The current year is: %d\n", year);
+     *     } else {
+     *         ::Serial.println("Invalid year, time may not be correctly set.");
+     *     }
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual year.");
+     * }
+     */
+    int getLocalYear();
+
+
+    /**
+     * @brief Retrieves the current month from the local time.
+     * 
+     * This function returns the current month (1-12) based on the local system time.
+     * If the local time cannot be obtained within the timeout, the function logs an error and returns 0.
+     * 
+     * The returned value represents the month as:
+     * - January returns 1
+     * - February returns 2
+     * - ...
+     * - December returns 12
+     * 
+     * @return The current local month (1-12). If unsuccessful, returns 0.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int month = eqsp32.getLocalMonth();
+     *     ::Serial.printf("Current Month: %d\n", month);
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual month.");
+     * }
+     * 
+     * @example
+     * // Check if it is December
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     if (eqsp32.getLocalMonth() == 12) {
+     *         ::Serial.println("It is December!");
+     *     } else {
+     *         ::Serial.printf("The current month is: %d\n", eqsp32.getLocalMonth());
+     *     }
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual month.");
+     * }
+     */
+    int getLocalMonth();
+
+
+    /**
+     * @brief Retrieves the current day of the month from the local time.
+     * 
+     * This function returns the current day of the month (1-31) based on the local system time.
+     * If the local time cannot be obtained within the timeout, the function logs an error and returns 0.
+     * 
+     * The returned value represents the specific day in the current month:
+     * - The first day of the month returns 1
+     * - The last day of the month (varies from 28 to 31) returns the respective value
+     * 
+     * @return The current local day of the month (1-31). If unsuccessful, returns 0.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int day = eqsp32.getLocalMonthDay();
+     *     ::Serial.printf("Current Day of the Month: %d\n", day);
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual day of the month.");
+     * }
+     * 
+     * @example
+     * // Check if today is the first of the month
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     if (eqsp32.getLocalMonthDay() == 1) {
+     *         ::Serial.println("Today is the first day of the month!");
+     *     } else {
+     *         ::Serial.printf("We are on day %d of the month.\n", eqsp32.getLocalMonthDay());
+     *     }
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual day of the month.");
+     * }
+     */
+    int getLocalMonthDay();
+
+
     /**
      * @brief Retrieves the current hour from the local time.
      * 
@@ -908,6 +1115,45 @@ public:
      * }
      */
     int getLocalMins();
+
+    /**
+     * @brief Retrieves the current seconds from the local time.
+     * 
+     * This function returns the current seconds (0-59) based on the local system time.
+     * If the local time cannot be obtained within the timeout, the function logs an error and returns 0.
+     * 
+     * The returned value represents the current second count within the minute:
+     * - The start of a new minute returns 0
+     * - The last second before the next minute returns 59
+     * 
+     * @return The current local seconds (0-59). If unsuccessful, returns 0.
+     * 
+     * @attention This function will return the default time if isLocalTimeSynced() is false!
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     int seconds = eqsp32.getLocalSecs();
+     *     ::Serial.printf("Current Seconds: %d\n", seconds);
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual seconds.");
+     * }
+     * 
+     * @example
+     * // Check if we are at the start of a new minute
+     * EQSP32 eqsp32;
+     * if (eqsp32.isLocalTimeSynced()) {
+     *     if (eqsp32.getLocalSecs() == 0) {
+     *         ::Serial.println("A new minute has started!");
+     *     } else {
+     *         ::Serial.printf("Current second: %d\n", eqsp32.getLocalSecs());
+     *     }
+     * } else {
+     *     ::Serial.println("Local time is not synchronized. Unable to fetch actual seconds.");
+     * }
+     */
+    int getLocalSecs();
+
 
     long getLocalUnixTimestamp();
     std::string getFormattedLocalTime();
