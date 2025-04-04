@@ -43,6 +43,11 @@ buzzerOff	KEYWORD2
 # Serial Communication
 configSerial	KEYWORD2
 
+# CAN-Bus Communication
+configCAN	KEYWORD2
+transmitCANFrame	KEYWORD2
+receiveCANFrame	KEYWORD2
+
 # Timer Functions
 start	KEYWORD2
 stop	KEYWORD2

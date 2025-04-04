@@ -818,10 +818,81 @@ public:
      */
     bool configSerial(EQSerialMode mode = RS232, int baud = 115200);
 
-    bool configCAN(CanBitRates CAN_BITRATE);
-    bool configCAN(CanBitRates CAN_BITRATE, uint32_t canID, bool canOpenFrame=false);
+        // CAN-Bus communication
+    /**
+     * @brief Configures the CAN bus interface on the EQSP32.
+     * 
+     * This function sets up the CAN bus peripheral using the specified bit rate,
+     * with optional filtering based on the provided CAN ID and loopback operation.
+     * It supports both normal and self-receiving (loopback) modes and allows you
+     * to filter incoming messages to only those matching a specific 11-bit standard CAN identifier.
+     * 
+     * - If `canID` is set to `0` (default), the EQSP32 will accept all incoming CAN messages.
+     * - If a specific `canID` is provided, only messages with that exact 11-bit ID will be received.
+     * - If `loopBack` is set to `true` (default is `false`), the controller enters self-test mode
+     *   and will also receive its own transmitted messages (useful for testing and development).
+     * 
+     * The CAN interface will be initialized at the specified bitrate using the internal TWAI controller.
+     * 
+     * @param CAN_BITRATE The bit rate to initialize the CAN interface with (e.g., CAN_500K).
+     * @param canID The 11-bit identifier to filter incoming messages. Default is 0 (accept all).
+     * @param loopBack Enable loopback mode for internal testing. Default is false (normal operation).
+     * 
+     * @return true if the configuration is successful, false otherwise.
+     * 
+     * @example
+     * Usage example:
+     * eqsp32.configCAN(CAN_500K);                        // Accept all messages
+     * eqsp32.configCAN(CAN_125K, 0x120);                 // Accept only messages with ID 0x120
+     * eqsp32.configCAN(CAN_250K, 0x000, true);           // Enable loopback (self-receive)
+     */
+    bool configCAN(CanBitRates CAN_BITRATE, uint32_t canID = 0, bool loopBack = false);
 
+    /**
+     * @brief Transmits a CAN message using the EQSP32 CAN interface.
+     * 
+     * This function sends a standard 11-bit CAN message using the built-in TWAI controller.
+     * The message structure must be pre-filled with an identifier, data payload, and data length.
+     * Transmission is automatically handled, including support for loopback mode if enabled.
+     * 
+     * The function is non-blocking—if the CAN bus is not ready or the transmit queue is full,
+     * it returns immediately with `false`.
+     * 
+     * @param canMessage A `CanMessage` struct containing the CAN ID, data bytes, and data length.
+     *                   Extended and remote frames are not supported with this transmission method.
+     * 
+     * @return true if the message was successfully queued for transmission, false otherwise.
+     * 
+     * @example
+     * CanMessage msg = {};
+     * msg.identifier = 0x120;
+     * msg.data_length_code = 3;
+     * msg.data[0] = 0xAA;
+     * msg.data[1] = 0xBB;
+     * msg.data[2] = 0xCC;
+     * 
+     * bool success = eqsp32.transmitCANFrame(msg);  // Transmit the CAN message
+     */
     bool transmitCANFrame(CanMessage canMessage);
+
+    /**
+     * @brief Receives a CAN message using the EQSP32 CAN interface.
+     * 
+     * This function attempts to retrieve a standard 11-bit CAN frame from the TWAI receive queue.
+     * It operates in a non-blocking manner; if no message is available, the function returns immediately with `false`.
+     * 
+     * The received data, including the identifier, payload, and length, is stored in the provided `CanMessage` structure.
+     * 
+     * @param canMessage A reference to a `CanMessage` struct where the received data will be stored.
+     * 
+     * @return true if a message was successfully received and stored in the struct, false otherwise.
+     * 
+     * @example
+     * CanMessage msg;
+     * if (eqsp32.receiveCANFrame(msg)) {
+     *     Serial.printf("Received CAN frame: ID=0x%03X DLC=%d\n", msg.identifier, msg.data_length_code);
+     * }
+     */
     bool receiveCANFrame(CanMessage &canMessage);
 
     // TODO add function description
