@@ -16,7 +16,11 @@
 #include "driver/mcpwm.h"
 #include "driver/twai.h"
 
+#include <Ethernet.h>
+
 #define POUT_PATCH(eq, pin, mode)    do {int native = eq.getPin(pin); eq.pinMode(pin, mode); pinMode(native, OUTPUT);} while (0);
+
+extern EthernetClient eqEthernetClient;  // User-accessible Ethernet client
 
 /**
  *      EQSP32 Main unit pin codes
@@ -153,11 +157,12 @@ enum PinMode : uint8_t {
     NO_MODE = 0xFF,
     CUSTOM  = 0xFE,
     INIT_NA = 0xFD,
-    DIN     = 0,
+    DIN     = 0,        //                                                  |IOEXP pin LOW (1-8), HIGH (9-16)
     DOUT,               // Not used
-    AIN,
-    AOUT,
-    POUT,
+    AIN,                //                                                  |IOEXP pin LOW (1-8)
+    CIN,                // Current input mode   (Must hasIOEXP be true)     |IOEXP pin HIGH (1-8)
+    AOUT,               // Not used
+    POUT,               //                                                  |IOEXP pin LOW (1-8), LOW (9-16)
         // Special modes
     SWT     = 8,        // Special DIN mode with debouncing timer
     TIN,                // Special AIN mode, automatic temperature convertion
@@ -542,7 +547,7 @@ public:
      * This function allows you to set the PWM frequency for the Power PWM Output (POUT) mode and all special POUT modes.
      * A change on power PWM frequency will affect all pins configured in POUT mode or any speial POUT mode.
      * The PWM frequency determines the rate at which the power is pulsed.
-     * The valid frequency range is between 50 Hz and 1500 Hz.
+     * The valid frequency range is between 50 Hz and 3000 Hz.
      * The default frequency is set to 1000 Hz after EQ is initialized.
      * 
      * Affected pin modes:
