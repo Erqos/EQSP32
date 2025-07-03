@@ -854,6 +854,29 @@ public:
     bool configCAN(CanBitRates CAN_BITRATE, uint32_t canID = 0, bool loopBack = false);
 
     /**
+     * @brief Configures the CAN bus to filter messages by Node ID only (CANopen-style).
+     * 
+     * This setup accepts all Function Codes for the specified Node ID,
+     * making it ideal for CANopen-style or other node-addressed protocols.
+     * 
+     * @note Broadcast messages like NMT (0x000) or SYNC (0x080) are NOT received,
+     * since they use Node ID 0 and are outside this filter.
+     * For accepting broadcast messages like NMT, configCAN() should be used to accept ALL IDs and implement software fitlering
+     * for function codes, NMT (0x000), SYNC (0x080), etc.
+     * 
+     * This filter always runs in normal mode (for loopback testing use configCAN()).
+     * 
+     * @param CAN_BITRATE The bit rate to initialize the CAN interface with (e.g., CAN_500K).
+     * @param nodeID The Node ID to filter for (1–127).
+     * 
+     * @return true if configuration is successful and node ID within valid range, false otherwise.
+     * 
+     * @example
+     * eqsp32.configCANNode(CAN_500K, 0x21);    // Accepts all PDOs, SDOs, EMCY for Node ID 33 (0x21).
+     */
+    bool configCANNode(CanBitRates CAN_BITRATE, uint8_t nodeID);
+
+    /**
      * @brief Transmits a CAN message using the EQSP32 CAN interface.
      * 
      * This function sends a standard 11-bit CAN message using the built-in TWAI controller.
