@@ -15,85 +15,102 @@
  * - Channel 1 of both modules is set to 3-wire mode.
  * - Channel 2 of both modules is set to 2/4-wire mode.
  *
+  * Detection Behavior:
+ * - EQXPT modules are auto-detected during the initial eqsp32.begin() call.
+ * - If a module is not connected at boot time, it will not be recognized later.
+ *
  * Features:
  * - Reads temperature from PT100 sensors and displays them in Celsius.
  * - Handles and prints simplified error messages.
  * - Supports two EQXPT modules (4 total PT100 sensors).
  *
  * @author Erqos Technologies
- * @date 2025-02-20
+ * @date 2025-08-05
  */
 
-#include <EQSP32.h>  // Include the EQSP32 library
+#include <EQSP32.h>
 
 EQSP32 eqsp32;
 
-// Define EQXPT module indices (first module starts from 1)
 #define EQXPT_MODULE_1  1
 #define EQXPT_MODULE_2  2
 
-// Loop Delay
-#define LOOP_DELAY_MS 1000  
+#define LOOP_DELAY_MS 1000
 
 /**
- * @brief Handles PT100 sensor errors and prints a generic message.
- * @param value The error code.
+ * @brief Prints a general error message for invalid PT100 readings.
+ * @param value The raw sensor value (not used here).
  */
 void handlePTSensorError(int value) {
-    Serial.print("⚠️ Wiring or sensor error\t");
+    Serial.print("⚠️ Error\t");
 }
 
 void setup() {
-    // Initialize serial for debugging
     Serial.begin(115200);
-    Serial.println("\nStarting EQSP32 EQXPT PT100 Demo...");
+    Serial.println("\n🚀 Starting EQSP32 EQXPT PT100 Demo...");
 
-    // Initialize EQSP32
-    eqsp32.begin();  // Default initialization
+    eqsp32.begin();
 
-    // Configure PT100 sensor types
-    eqsp32.pinMode(EQXPT(EQXPT_MODULE_1, 1), PT100_3W);  // Module 1, Channel 1 → 3-wire mode
-    eqsp32.pinMode(EQXPT(EQXPT_MODULE_1, 2), PT100_24W);  // Module 1, Channel 2 → 2/4-wire mode
+    // Configure EQXPT Module 1 if detected
+    if (eqsp32.isModuleDetected(EQXPT(EQXPT_MODULE_1))) {
+        eqsp32.pinMode(EQXPT(EQXPT_MODULE_1, 1), PT100_3W);   // 3-wire
+        eqsp32.pinMode(EQXPT(EQXPT_MODULE_1, 2), PT100_24W);  // 2/4-wire
+    } else {
+        Serial.println("⚠️ EQXPT Module 1 not detected. Skipping configuration.");
+    }
 
-    eqsp32.pinMode(EQXPT(EQXPT_MODULE_2, 1), PT100_3W);  // Module 2, Channel 1 → 3-wire mode
-    eqsp32.pinMode(EQXPT(EQXPT_MODULE_2, 2), PT100_24W);  // Module 2, Channel 2 → 2/4-wire mode
+    // Configure EQXPT Module 2 if detected
+    if (eqsp32.isModuleDetected(EQXPT(EQXPT_MODULE_2))) {
+        eqsp32.pinMode(EQXPT(EQXPT_MODULE_2, 1), PT100_3W);
+        eqsp32.pinMode(EQXPT(EQXPT_MODULE_2, 2), PT100_24W);
+    } else {
+        Serial.println("⚠️ EQXPT Module 2 not detected. Skipping configuration.");
+    }
 }
 
 void loop() {
-    // Print a divider for better readability
     Serial.println("\n========================================");
     Serial.println("📡 Reading PT100 Sensor Data...\n");
 
-    // Read PT100 sensors from Module 1
-    Serial.print("🌡️ EQXPT Module 1: ");
-    for (uint8_t channel = 1; channel <= EQXPT_CHANNELS; channel++) {
-        int value = eqsp32.readPin(EQXPT(EQXPT_MODULE_1, channel));
+    // -------- Module 1 --------
+    if (eqsp32.isModuleDetected(EQXPT(EQXPT_MODULE_1))) {
+        Serial.print("🌡️ EQXPT Module 1: ");
+        for (uint8_t ch = 1; ch <= EQXPT_CHANNELS; ch++) {
+            int value = eqsp32.readPin(EQXPT(EQXPT_MODULE_1, ch));
+            Serial.printf("(%d) ", ch);
 
-        Serial.printf("(%d) ", channel);
-
-        if (IS_PT_VALID(value)) {
-            Serial.printf("%.1f°C\t", value / 10.0); // Print valid temperature with one decimal
-        } else {
-            Serial.print("⚠️ Error\t");
+            if (IS_PT_VALID(value)) {
+                // Convert raw value (hundredths of °C) to float in Celsius
+                Serial.printf("%.1f°C\t", CONVERT_PT(value) );
+				// Serial.printf("%.1f°C\t", value / 100.0);	// Same as using CONVERT_PT() 
+            } else {
+                handlePTSensorError(value);
+            }
         }
+        Serial.println();
+    } else {
+        Serial.println("⚠️ EQXPT Module 1 not detected.");
     }
-    Serial.println(); // New line after module 1 readings
 
-    // Read PT100 sensors from Module 2
-    Serial.print("🌡️ EQXPT Module 2: ");
-    for (uint8_t channel = 1; channel <= EQXPT_CHANNELS; channel++) {
-        int value = eqsp32.readPin(EQXPT(EQXPT_MODULE_2, channel));
+    // -------- Module 2 --------
+    if (eqsp32.isModuleDetected(EQXPT(EQXPT_MODULE_2))) {
+        Serial.print("🌡️ EQXPT Module 2: ");
+        for (uint8_t ch = 1; ch <= EQXPT_CHANNELS; ch++) {
+            int value = eqsp32.readPin(EQXPT(EQXPT_MODULE_2, ch));
+            Serial.printf("(%d) ", ch);
 
-        Serial.printf("(%d) ", channel);
-
-        if (IS_PT_VALID(value)) {
-            Serial.printf("%.1f°C\t", value / 10.0); // Print valid temperature with one decimal
-        } else {
-            Serial.print("⚠️ Error\t");
+            if (IS_PT_VALID(value)) {
+                // Convert raw value (hundredths of °C) to float in Celsius
+                Serial.printf("%.1f°C\t", CONVERT_PT(value) );
+				// Serial.printf("%.1f°C\t", value / 100.0);	// Same as using CONVERT_PT() 
+            } else {
+                handlePTSensorError(value);
+            }
         }
+        Serial.println();
+    } else {
+        Serial.println("⚠️ EQXPT Module 2 not detected.");
     }
-    Serial.println(); // New line after module 2 readings
 
-    // Add a delay before next reading
     delay(LOOP_DELAY_MS);
 }

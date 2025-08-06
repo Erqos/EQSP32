@@ -1,28 +1,42 @@
-/**
+ /**
  * @file EQSP32_WebServer_AJAX_UI_Demo.ino
- * @brief Interactive web interface with real-time AJAX updates and local time display using EQSP32.
+ * @brief Interactive web interface with real-time AJAX updates using EQSP32 over Wi-Fi or Ethernet.
  *
  * This example demonstrates:
- * - Initialization of EQSP32 with static IP and EQConnect provisioning enabled.
- * - Ambient temperature monitoring via NTC thermistor with smoothing.
- * - Manual switch control for two lights (ceiling and hidden) via hardware buttons.
- * - Virtual control of fan and ventilation via a responsive web interface (AJAX).
- * - Real-time status updates using a JSON API (temperature, relay states, switch states).
- * - Real-time display of local time using EQSP32 time functions.
+ * - EQSP32 web server control with both Ethernet and Wi-Fi support.
+ * - Static IP or DHCP configuration via EQConnect for either interface (by default DHCP option is used).
+ * - Real-time status updates (temperature, switches, relays) using JSON and AJAX.
+ * - Local time display synchronized via NTP.
+ * - Interactive, responsive HTML5 interface with color-coded temperature gauge.
  *
- * - Responsive HTML UI with dynamic feedback and color-coded temperature gauge.
- * - Modular HTML and JavaScript generation for easier maintenance.
- * - EQTimer used for periodic IP display in serial output.
+ * Connectivity Notes:
+ * - Wi-Fi credentials and optional static IP (for either Wi-Fi or Ethernet) are configured via the EQConnect mobile app.
+ * - By default, EQSP32 uses DHCP unless changed via EQConnect.
+ * - The web server is accessible via:
+ *    - The IP address, DHCP/static (e.g., http://192.168.1.42)
+ *    - or the device name, which might not be available in case of static IP (e.g., http://My-Device.home)
  *
+ * Hostname Behavior:
+ * - Device name is automatically sanitized:
+ *    - Spaces are replaced with `-`
+ *    - Special characters are removed
+ *    - For example: "My Name!" becomes http://My-Name.home
+ *
+ * Maintenance Panel:
+ * - The EQSP32 maintenance panel (OTA firmware updates and device info) runs on port 8000:
+ *    - e.g., http://My-Name.home:8000
+ *    - or DHCP/static IP address (e.g., http://192.168.1.42:8000)
+ * 
  * Hardware Setup:
  * - EQSP32 board powered by an external 24V DC supply.
  * - NTC thermistor (e.g., NTCLE413E2103F106A) connected between terminal 1 (TIN) and EQSP32’s 5V output.
  * - Toggle switches (SPST) wired between EQSP32 5V supply (or VIn) and SWT inputs (EQ_PIN_3, EQ_PIN_4).
  * - Four relay outputs for load control (EQ_PIN_12, 13, 14, 16) switching on the low side.
  *
- * @date 2025-06-17
  * @author Erqos Technologies
+ * @date 2025-08-05
  */
+
 
 #include <EQSP32.h>
 #include <WiFi.h>
@@ -67,9 +81,26 @@ EQTimer printIP(30000);  // Timer to periodically print IP
 #define SMOOTH_TEMP_SAMPLES 10              // Number of samples to average for temperature
 
 
+void handleToggleFan();
+void handleToggleVent();
+void handleManualButtons();
+void handleStatus();
+void handleRoot();
+float getSmoothedTemperature();
+String buildPageHeader();
+String buildSectionTemperature(float temp);
+String buildSectionControls();
+String buildSectionInputs(int sw1, int sw2);
+String buildSectionOutputs(int fan, int vent, int ceiling, int hidden);
+String buildSectionTime();
+String buildScriptConstants();
+String buildScriptFunctions();
+
+
 // ================== SYSTEM SETUP ==================
 void setup() {
     Serial.begin(115200);
+	Serial.println("\n🚀 Starting EQSP32 Webserver AJAX UI Demo ...");
 
     // -- Initialize EQSP32 (uses EQConnect for credentials)
     eqsp32.begin();
@@ -105,33 +136,32 @@ void setup() {
     server.on("/status", handleStatus);
 
     printIP.start();
+	Serial.println("\nWaiting for device to go online ...");
 }
 
 
 // ================== MAIN LOOP ==================
 void loop() {
-    // -- Start the web server once WiFi is connected
-    if (!serverStarted && eqsp32.getWiFiStatus() == EQ_WF_CONNECTED && eqsp32.isLocalTimeSynced()) {
-        Serial.println("🌐 WiFi Connected — Starting WebServer...");
+    // -- Start the web server once is online and ready
+    if (!serverStarted && eqsp32.isDeviceOnline() && eqsp32.isLocalTimeSynced()) {
+        Serial.println("🌐 Device Online and Ready — Starting WebServer ...");
         server.begin();
 
-        // Optional: Set static IP (you may remove this section)
-        IPAddress local_IP(192, 168, 1, 42);
-        IPAddress gateway(192, 168, 1, 1);
-        IPAddress subnet(255, 255, 255, 0);
-        if (!WiFi.config(local_IP, gateway, subnet)) {
-            Serial.println("❌ Failed to configure static IP");
-        }
-
         Serial.print("📡 Access EQSP32 at: http://");
-        Serial.println(WiFi.localIP());  // Consider replacing with mDNS in the future
+        Serial.println(eqsp32.localIP());
+		Serial.print("and maintenance panel at: http://");
+        Serial.print(eqsp32.localIP());
+		Serial.println(":8000\n");
         serverStarted = true;
     }
 
     // -- Print IP periodically for monitoring
     if (printIP.isExpired()) {
         Serial.print("📡 Access EQSP32 at: http://");
-        Serial.println(WiFi.localIP());
+        Serial.println(eqsp32.localIP());
+		Serial.print("and maintenance panel at: http://");
+        Serial.print(eqsp32.localIP());
+		Serial.println(":8000\n");
         printIP.reset();
     }
 
@@ -419,4 +449,3 @@ String buildScriptFunctions() {
     </script>
     )rawliteral";
 }
-

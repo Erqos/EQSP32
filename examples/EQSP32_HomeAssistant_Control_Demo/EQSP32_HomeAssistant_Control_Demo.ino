@@ -8,18 +8,21 @@
  * - Automatically turn off the relay when the timer expires.
  * - Update Home Assistant switch state when the relay turns off.
  *
- * Hardware Setup:
- * - EQSP32 connected to WiFi and MQTT broker (configured via EQConnect).
- * - Relay connected to an EQSP32 output pin.
+ * Connectivity Requirements:
+ * - EQSP32 must be connected to the internet via Wi-Fi or Ethernet:
+ *   - For Wi-Fi: use the EQConnect mobile app to set Wi-Fi credentials.
+ *   - For Ethernet: simply connect the cable to a DHCP-enabled network.
+ * - MQTT broker credentials (username & password) must be configured via EQConnect.
  *
  * Features:
+ * - Compatible with both Ethernet and Wi-Fi.
  * - Uses MQTT discovery for seamless integration with Home Assistant.
  * - Controls relay using a switch in Home Assistant.
  * - Uses a Home Assistant number input to define the relay ON duration.
  * - Automatically turns off relay when the time expires.
  *
  * @author Erqos Technologies
- * @date 2025-02-22
+ * @date 2025-08-05
  */
 
 #include <EQSP32.h>   // Include the EQSP32 library

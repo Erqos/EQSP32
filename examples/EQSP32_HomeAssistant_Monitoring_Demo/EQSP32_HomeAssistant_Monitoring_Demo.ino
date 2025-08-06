@@ -6,17 +6,23 @@
  * - Publish sensor data (temperature) to Home Assistant.
  * - Detect and report sensor errors using a binary sensor.
  *
+ * Connectivity Requirements:
+ * - EQSP32 must be connected to the internet via Wi-Fi or Ethernet:
+ *   - For Wi-Fi: use the EQConnect mobile app to set Wi-Fi credentials.
+ *   - For Ethernet: simply connect the cable to a DHCP-enabled network.
+ * - MQTT broker credentials (username & password) must be configured via EQConnect.
+ *
  * Hardware Setup:
- * - EQSP32 connected to WiFi and MQTT broker (configured via EQConnect).
- * - Temperature sensor (NTC) connected to an EQSP32 pin.
+ * - Temperature sensor (NTC) connected to an EQSP32 TIN-capable pin.
  *
  * Features:
- * - Uses MQTT discovery for seamless integration with Home Assistant.
+ * - Compatible with both Ethernet and Wi-Fi.
+ * - Uses MQTT discovery for seamless Home Assistant integration.
  * - Publishes real-time temperature values.
- * - Reports sensor errors (open/short circuit) via a binary sensor.
+ * - Reports sensor errors (e.g., open/short circuit) via a binary sensor.
  *
  * @author Erqos Technologies
- * @date 2025-02-22
+ * @date 2025-08-05
  */
 
 #include <EQSP32.h>  // Include the EQSP32 library
