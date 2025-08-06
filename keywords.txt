@@ -4,10 +4,10 @@
 
 EQSP32	KEYWORD1
 EQSP32Configs	KEYWORD1
-EQTimer	KEYWORD1
+EQTimer		KEYWORD1
 EQSerialMode	KEYWORD1
-PinMode	KEYWORD1
-TrigMode	KEYWORD1
+EQ_PinMode	KEYWORD1
+EQ_TrigMode   	KEYWORD1
 EQ_WeekDay	KEYWORD1
 EQ_WifiStatus	KEYWORD1
 
@@ -16,21 +16,26 @@ EQ_WifiStatus	KEYWORD1
 ###########################################
 
 # Initialization
-begin	KEYWORD2
+begin		KEYWORD2
 
 # Pin Usage and Configuration
-pinMode	KEYWORD2
+pinMode		KEYWORD2
 readMode	KEYWORD2
+pinValue	KEYWORD2
+readPin		KEYWORD2
+getPin		KEYWORD2
 configPOUTFreq	KEYWORD2
 configSWT	KEYWORD2
 configTIN	KEYWORD2
 configRELAY	KEYWORD2
-pinValue	KEYWORD2
-readPin	KEYWORD2
-getPin	KEYWORD2
+configPCC	KEYWORD2
+isModuleDetected KEYWORD2
 
-# WiFi Functions
-getWiFiStatus	KEYWORD2
+# Connectivity Functions
+getWiFiStatus		KEYWORD2
+getEthernetStatus	KEYWORD2
+isDeviceOnline		KEYWORD2
+localIP			KEYWORD2
 
 # Power Supply Monitoring
 readInputVoltage	KEYWORD2
@@ -70,9 +75,31 @@ getLocalYearDay	KEYWORD2
 isLocalTimeSynced	KEYWORD2
 printLocalTime	KEYWORD2
 
-# Utility Functions
+getLocalUnixTimestamp	KEYWORD2
+getFormattedLocalTime	KEYWORD2
+getUnixTimestamp	KEYWORD2
+getFormattedUnixTimestamp	KEYWORD2
+
+getUptimeDays    KEYWORD2
+getUptimeHours   KEYWORD2
+getUptimeMinutes KEYWORD2
+getUptimeSeconds KEYWORD2
+printUptime      KEYWORD2
+
+# LED Control Functions
+setBleLed        KEYWORD2
+resetBleLed      KEYWORD2
+toggleBleLed     KEYWORD2
+setWifiLed       KEYWORD2
+resetWifiLed     KEYWORD2
+toggleWifiLed    KEYWORD2
+
+
+# Helper Functions
 isLocalPin	KEYWORD2
 isExpModulePin	KEYWORD2
+getDeviceName	KEYWORD2
+getDeviceID	KEYWORD2
 
 ######################################
 # EQSP32 Macros (KEYWORD2)
@@ -95,6 +122,14 @@ EQXIO	KEYWORD2
 EQXPH	KEYWORD2
 EQXTC	KEYWORD2
 EQXPT	KEYWORD2
+
+CONVERT_AIN          KEYWORD2
+CONVERT_TIN          KEYWORD2
+CONVERT_CIN          KEYWORD2
+CONVERT_PH           KEYWORD2
+CONVERT_TC           KEYWORD2
+CONVERT_PT           KEYWORD2
+
 
 
 ######################################
@@ -131,6 +166,7 @@ CUSTOM	LITERAL1
 DIN	LITERAL1
 AIN	LITERAL1
 CIN	LITERAL1
+PCC	LITERAL1          
 POUT	LITERAL1
 SWT	LITERAL1
 TIN	LITERAL1
@@ -141,14 +177,25 @@ TC	LITERAL1
 PT100_24W	LITERAL1
 PT100_3W	LITERAL1
 
-STATE	LITERAL1
+STATE		LITERAL1
 ON_RISING	LITERAL1
 ON_FALLING	LITERAL1
 ON_TOGGLE	LITERAL1
-RS232	LITERAL1
+
+RS232		LITERAL1
 RS232_INV	LITERAL1
 RS485_TX	LITERAL1
 RS485_RX	LITERAL1
+
+
+# Conversion multipliers
+AIN_TO_V_MULT      LITERAL1
+TIN_TO_C_MULT      LITERAL1
+CIN_TO_mA_MULT     LITERAL1
+
+PH_TO_PH_MUL       LITERAL1
+TC_TO_C_MUL        LITERAL1
+PT_TO_C_MULT       LITERAL1
 
 
 # EQXTC Constants
@@ -187,6 +234,8 @@ EQXIO_CHANNELS	LITERAL1
 
 
 # Fault Detection Macros
+CIN_OC_ERROR		LITERAL1
+
 TIN_OPEN_CIRCUIT	LITERAL1
 TIN_SHORT_CIRCUIT	LITERAL1
 IS_TIN_VALID	LITERAL1

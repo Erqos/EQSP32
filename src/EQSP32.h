@@ -5,7 +5,6 @@
 #include <string>
 
 #include "time.h"
-#include <HTTPClient.h>
 
 #include <unordered_map>   // For std::unordered_map
 #include <map>             // For std::map
@@ -16,11 +15,8 @@
 #include "driver/mcpwm.h"
 #include "driver/twai.h"
 
-#include <Ethernet.h>
-
 #define POUT_PATCH(eq, pin, mode)    do {int native = eq.getPin(pin); eq.pinMode(pin, mode); pinMode(native, OUTPUT);} while (0);
 
-extern EthernetClient eqEthernetClient;  // User-accessible Ethernet client
 
 /**
  *      EQSP32 Main unit pin codes
@@ -141,28 +137,35 @@ extern EthernetClient eqEthernetClient;  // User-accessible Ethernet client
 #define EQXSTEP_ID          0x02        // Stepper driver module
 #define EQXPH_ID            0x10        // PH sensor module             (Supported)
 #define EQXTC_ID            0x20        // Thermocouple sensor module   (Supported)
-#define EQXPT_ID            0x30        // PT100/PT1000 sensor module   (Supported PT100)
+#define EQXPT_ID            0x30        // PT100 sensor module          (Supported)
 #define EQXCI_ID            0x50        // Current input sensor [4-20mA analog input]
 #define EQXCS_ID            0x50        // Current sensor module
 #define EQXLC_ID            0x60        // Load cell sensor module
 
 
-#define EQXIO(idx, pin)     (MODULE_SHIFT(EQXIO_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
-#define EQXPH(idx, pin)     (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
-#define EQXTC(idx, pin)     (MODULE_SHIFT(EQXTC_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
-#define EQXPT(idx, pin)     (MODULE_SHIFT(EQXPT_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXIO_MACRO(idx, pin)     (MODULE_SHIFT(EQXIO_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXPH_MACRO(idx, pin)     (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXTC_MACRO(idx, pin)     (MODULE_SHIFT(EQXTC_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXPT_MACRO(idx, pin)     (MODULE_SHIFT(EQXPT_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+
+// Inline wrappers with default pin = 0
+inline uint32_t EQXIO(int idx, int pin = 0) { return EQXIO_MACRO(idx, pin); }
+inline uint32_t EQXPH(int idx, int pin = 0) { return EQXPH_MACRO(idx, pin); }
+inline uint32_t EQXTC(int idx, int pin = 0) { return EQXTC_MACRO(idx, pin); }
+inline uint32_t EQXPT(int idx, int pin = 0) { return EQXPT_MACRO(idx, pin); }
 
 // EQSP32 pin modes
-enum PinMode : uint8_t {
+enum EQ_PinMode : uint8_t {
     NO_MODE = 0xFF,
     CUSTOM  = 0xFE,
     INIT_NA = 0xFD,
     DIN     = 0,        //                                                  |IOEXP pin LOW (1-8), HIGH (9-16)
     DOUT,               // Not used
     AIN,                //                                                  |IOEXP pin LOW (1-8)
-    CIN,                // Current input mode   (Must hasIOEXP be true)     |IOEXP pin HIGH (1-8)
-    AOUT,               // Not used
+    CIN,                // Current input mode, returns mA x 100             |IOEXP pin HIGH (1-8)       (Must hasIOEXP be true)
+    PCC,    // (Beta)   // Pulse Capture Counter mode, counted pulses are cleared on each readPin() call for the respective pin
     POUT,               //                                                  |IOEXP pin LOW (1-8), LOW (9-16)
+    AOUT,
         // Special modes
     SWT     = 8,        // Special DIN mode with debouncing timer
     TIN,                // Special AIN mode, automatic temperature convertion
@@ -176,6 +179,33 @@ enum PinMode : uint8_t {
 };
 
 
+/** =========================================
+ * 
+ *      Value conversions based on pin modes
+ *    
+ * Divide the respective readPin() value 
+ * with the respective multiplier for conversion.
+ * 
+ *   =========================================*/
+#define AIN_TO_V_MULT       1000.0      // AIN values are by default in mV (V * 1000)
+#define TIN_TO_C_MULT       10.0        // TIN values are in C * 10
+#define CIN_TO_mA_MULT      100.0       // CIN values are in mA * 100
+
+#define PH_TO_PH_MUL        100.0       // PH values are in pH * 100
+#define TC_TO_C_MUL         10.0        // TC values are in C * 10
+#define PT_TO_C_MUL         100.0       // PT values are in C * 100 (higher precision temperature measurements that the other modes)
+
+inline float CONVERT_AIN(int readPinValue) { return ( (float)readPinValue / AIN_TO_V_MULT ); }
+inline float CONVERT_TIN(int readPinValue) { return ( (float)readPinValue / TIN_TO_C_MULT ); }
+inline float CONVERT_CIN(int readPinValue) { return ( (float)readPinValue / CIN_TO_mA_MULT ); }
+inline float CONVERT_PH(int readPinValue) { return ( (float)readPinValue / PH_TO_PH_MUL ); }
+inline float CONVERT_TC(int readPinValue) { return ( (float)readPinValue / TC_TO_C_MUL ); }
+inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO_C_MUL ); }
+
+// ====================================
+
+#define CIN_OC_ERROR        -1          // CIN sensor has detected an over current condition (> 21mA)
+
 #define TIN_OPEN_CIRCUIT    -9999       // Open circuit detected
 #define TIN_SHORT_CIRCUIT   9999        // Short circuit detected
 #define IS_TIN_VALID(value) ((value) != TIN_OPEN_CIRCUIT && (value) != TIN_SHORT_CIRCUIT)
@@ -187,16 +217,16 @@ enum PinMode : uint8_t {
 #define IS_TC_VALID(value) (((value) & 0xFF8000) != 0x8000)        // Macro to check if a Thermocouple (TC) sensor value is valid (we check if error bit or if negative temperature)
 
 
-#define PT_FAULT_THR_HIGH   0x800080    // PT sensor RTD > High allowed threshold
-#define PT_FAULT_THR_LOW    0x800040    // PT sensor RTD < Low allowed threshold
-#define PT_FAULT_REFIN_LOW  0x800020    // PT sensor REF under expected
-#define PT_FAULT_REFIN_HIGH 0x800010    // PT sensor open circuit or REF over expected
-#define PT_FAULT_RTDIN_LOW  0x800008    // PT sensor M- or I- open, or damaged RTD sensor
-#define PT_FAULT_OVUV       0x800004    // PT sensor Over/Under voltage
+#define PT_FAULT_THR_HIGH   0x800080    // PT sensor RTD > High allowed threshold   (Wrong sensor value)
+#define PT_FAULT_THR_LOW    0x800040    // PT sensor RTD < Low allowed threshold    (Wrong sensor value)
+#define PT_FAULT_REFIN_LOW  0x800020    // PT sensor REF under expected             (No sensor)
+#define PT_FAULT_REFIN_HIGH 0x800010    // PT sensor open circuit or REF over expected  (Open circuit)
+#define PT_FAULT_RTDIN_LOW  0x800008    // PT sensor M- or I- open, or damaged RTD sensor   (Open or damaged circuit)
+#define PT_FAULT_OVUV       0x800004    // PT sensor Over/Under voltage             (Voltage error)
 #define IS_PT_VALID(value) (((value) & 0xFF800000) != 0x800000)      // Macro to check if a PT sensor value is valid (we check error bit or if negative temperature)
 
 
-enum TrigMode {
+enum EQ_TrigMode : uint8_t {
     STATE,
     ON_RISING,
     ON_FALLING,
@@ -208,6 +238,13 @@ enum EQ_WifiStatus : uint8_t {
     EQ_WF_CONNECTED,
     EQ_WF_RECONNECTING,
     EQ_WF_SCANNING
+};
+
+enum EQ_EthernetStatus : uint8_t {
+    EQ_ETH_DISCONNECTED  = 0,   // Ethernet cable disconnected
+    EQ_ETH_CONNECTED,           // Online
+    EQ_ETH_PLUGGED_IN,          // Plugged in, not yet online
+    EQ_ETH_STOPPED
 };
 
 enum EQ_WeekDay : uint8_t {
@@ -245,12 +282,9 @@ enum EQSerialMode {
 
 typedef struct
 {
-    std::string databaseURL = "";
-    std::string databaseAPIKey = "";
     std::string mqttBrokerIp = "homeassistant.local";
     int mqttBrokerPort = 1883;
     std::string mqtt_broker_ca = "";    // CA certificate (empty if not required)
-    std::string devSystemIcon = "";     // Link to developer's system icon for IoT UI display
     std::string devSystemID = "";        // Developer system ID (assigned by the system's developer, hardcoded by developer, READ ONLY access by external app)
     std::string userDevName = "";        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
     std::string wifiSSID = "";          // (Optional) Default network SSID
@@ -263,6 +297,10 @@ typedef struct
 
 class EQ_Private;       // Forward declaration of the nested private class
 
+
+#if ESP_ARDUINO_VERSION_MAJOR > 2
+#undef Serial  // 🛡️ protect the header itself
+#endif
 
 /**
  * @brief EQSP32 ESP32 Industrial IoT PLC Controller.
@@ -284,8 +322,6 @@ class EQ_Private;       // Forward declaration of the nested private class
  * 
  * void setup() {
  *     EQSP32Configs configs;
- *     configs.databaseURL = "https://example.com/database";    // Needed for firebase connection
- *     configs.databaseAPIKey = "API_KEY";                      // Needed for firebase connection
  *     configs.devSystemID = "SYSTEM_ID";                       // Needed for custom mobile app
  *     configs.userDevName = "Device Name";                     // Optional
  *     configs.wifiSSID = "YourSSID";                           // Optional
@@ -333,9 +369,11 @@ public:
      */
     void begin(EQSP32Configs eq_configs = {}, bool verboseEnabled = false);
     void begin(bool verboseEnabled);
-    
+
+
     // Only for self-testing, NOT to be used by the user
     void beginTest(std::string command);
+
 
     /**
      * @brief Checks if a given pin identifier corresponds to a local pin on the EQSP32 module.
@@ -366,6 +404,7 @@ public:
      */
     bool isLocalPin(uint32_t idMaskCode);
 
+
     /**
      * @brief Checks if a given pin identifier corresponds to an expansion module pin on the EQSP32.
      * 
@@ -391,6 +430,39 @@ public:
      * @endcode
      */
     bool isExpModulePin(uint32_t idMaskCode);
+
+
+    /**
+     * @brief Checks whether a specific EQX expansion module is detected on the system.
+     * 
+     * This function allows you to check if a particular EQSP32 expansion module (EQX) is currently connected and recognized
+     * by the EQSP32 controller. It verifies the presence of the module based on the provided `moduleCode`, which should
+     * be constructed using the appropriate macros like `EQXTC(idx)`, `EQXPH(idx)`, `EQXIO(idx, pin)`, etc.
+     * 
+     * @param moduleCode The encoded module identifier. Use macros like `EQXPH(idx)`, `EQXTC(idx)`, `EQXIO(idx, pin)` to generate this value.
+     *                  The `idx` argument must be in the range 1–15. Index 0 is not valid and should not be used.
+     * 
+     * @return true if the module is detected and properly initialized, false otherwise.
+     * 
+     * @note
+     * - The EQSP32 system supports up to 15 expansion modules of each type.
+     * - Indexing is 1-based, meaning the first module uses index 1.
+     * - Indexing is per module type, not based on physical daisy-chain order.
+     *   For example, if you have 2 EQXPH modules and 2 EQXIO modules connected in any order,
+     *   the first detected pH module will be `EQXPH(1)` and the second will be `EQXPH(2)`, regardless of where the EQXIO modules are placed.
+     *   Likewise, the first detected IO module will be `EQXIO(1)` and the second `EQXIO(2)`, even if they appear later in the chain physically.
+     * 
+     * @example
+     * @code
+     * if (eqsp32.isModuleDetected(EQXPH(1))) {
+     *     Serial.println("pH module 1 detected.");
+     * } else {
+     *     Serial.println("ph module 1 NOT detected.");
+     * }
+     * @endcode
+     */
+    bool isModuleDetected(uint32_t moduleCode);
+
 
     /**
      * @brief Retrieves the corresponding ESP32 pin number for a given EQSP32 pin index.
@@ -443,7 +515,8 @@ public:
      * Usage example:
      * bool success = EQSP32::pinMode(3, DOUT); // Configures pin 3 as a digital output
      */
-    bool pinMode(int pinIndex, PinMode mode, int freq = 500);
+    bool pinMode(int pinIndex, EQ_PinMode mode, int freq = 500);
+
 
     /**
      * @brief Reads the current mode of a specified pin on the EQSP32.
@@ -453,7 +526,7 @@ public:
      * 
      * @param pinIndex The index of the pin to read the mode from (1 to 16).
      * 
-     * @return The current mode of the specified pin. It returns one of the following PinMode values: 
+     * @return The current mode of the specified pin. It returns one of the following EQ_PinMode values: 
      * `DIN`, `DOUT`, `AIN`, `AOUT`, `POUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `NO_MODE`.
      * 
      * @example
@@ -462,7 +535,7 @@ public:
      * @code
      * EQSP32 eqsp32;
      * eqsp32.begin();
-     * PinMode mode = eqsp32.readMode(EQ_PIN_3); // Reads the mode of pin 3
+     * EQ_PinMode mode = eqsp32.readMode(EQ_PIN_3); // Reads the mode of pin 3
      * if (mode != NO_MODE) {
      *     Serial.println("The pin mode is valid and local.");
      * } else {
@@ -471,7 +544,7 @@ public:
      * 
      * // Example for checking the mode of a slave ID 1 pin
      * uint32_t slavePin = SLAVE_1(EQ_PIN_3);
-     * PinMode slaveMode = eqsp32.readMode(slavePin); // Reads the mode of slave ID 1 pin 3
+     * EQ_PinMode slaveMode = eqsp32.readMode(slavePin); // Reads the mode of slave ID 1 pin 3
      * if (slaveMode != NO_MODE) {
      *     Serial.println("The slave pin mode is valid and local for Slave 1.");
      * } else {
@@ -479,7 +552,8 @@ public:
      * }
      * @endcode
      */
-    PinMode readMode(int pinIndex);
+    EQ_PinMode readMode(int pinIndex);
+
 
     /**
      * @brief Sets the value for a specified pin on the EQSP32.
@@ -508,6 +582,7 @@ public:
      */
     bool pinValue(int pinIndex, int value);
 
+
     /**
      * @brief Reads the value of a specified pin on the EQSP32.
      * 
@@ -519,7 +594,7 @@ public:
      * @param pinIndex The index of the pin to read the value from (1 to 16).
      * @param trigMode The trigger mode to consider when reading digital pins. Options are STATE, ON_RISING, ON_FALLING, and ON_TOGGLE. Default is STATE.
      * 
-     * @return The pin value based on the PinMode. For AIN, it returns the analog value in mV. For TIN, it returns the temperature in Celsius * 10.
+     * @return The pin value based on the EQ_PinMode. For AIN, it returns the analog value in mV. For TIN, it returns the temperature in Celsius * 10.
      * For other input type PinModes, it returns 1 if the pin state is HIGH, and 0 if the pin state is LOW. Returns -1 if the pin index is invalid.
      * For output type PinModes, it returns the user set pinValue. Ex. if eqsp32.pinValue(2, 500), eqsp32.readPin(2) will return 500 (assuming it is set in one of the oupute modes).
      * 
@@ -539,7 +614,8 @@ public:
      * Usage example:
      * int value = EQSP32::readPin(3, ON_RISING); // Reads the digital value of pin 3, considering ON_RISING trigger mode
      */
-    int readPin(int pinIndex, TrigMode trigMode = STATE);    // New method to read pin values
+    int readPin(int pinIndex, EQ_TrigMode trigMode = STATE);    // New method to read pin values
+
 
     /**
      * @brief Configures the PWM frequency for the Power PWM Output (POUT) mode on the EQSP32.
@@ -570,6 +646,7 @@ public:
      */
     bool configPOUTFreq(int freq);
 
+
         // Special mode configurations
     /**
      * @brief Configures the Switch (SWT) mode on the EQSP32.
@@ -589,6 +666,7 @@ public:
      */
     bool configSWT(int pinIndex, int debounceTime_ms = 100);
 
+
     /**
      * @brief Configures the Temperature Input (TIN) mode on the EQSP32.
      * 
@@ -607,6 +685,7 @@ public:
      * bool success = EQSP32::configTIN(2, 4000, 12000); // Configures pin 2 for Temperature Input (TIN) mode with a beta coefficient of 4000 and a reference resistance of 12000 ohms
      */
     bool configTIN(int pinIndex, int beta = 3435, int referenceResistance = 10000);
+
 
     /**
      * @brief Configures the Relay (RELAY) mode on the EQSP32.
@@ -629,96 +708,38 @@ public:
      */    
     bool configRELAY(int pinIndex, int holdValue = 500, int derateDelay = 1000);
 
-        // Read/Write database user variables
-    /**
-     * @brief Reads a user-defined boolean value from the EQSP32 database.
-     * 
-     * This function allows you to read a boolean value stored in the EQSP32 database at a specified index.
-     * The function supports trigger modes for dynamic reading based on changes in the stored value.
-     * The trigger modes include STATE, ON_RISING, ON_FALLING, and ON_TOGGLE (default is STATE).
-     * 
-     * @param idx The index of the user-defined boolean value to read (1 to USER_NUM_BOOL).
-     * @param trigMode The trigger mode to consider when reading the boolean value. Options are STATE, ON_RISING, ON_FALLING, and ON_TOGGLE. Default is STATE.
-     * 
-     * @return The boolean value based on the specified trigger mode. Returns true or false depending on the stored value in the EQSP32 database. Returns false if the provided index is out of range (1 to USER_NUM_BOOL).
-     * 
-     * @note When reading a boolean value with a specific trigger mode (e.g., ON_RISING), the function updates the internal state. If you read the boolean for ON_RISING and it is actually a falling edge, the internal state is updated. On the next read for ON_FALLING, it will return false, even if the actual edge was falling during the previous read. Take this into consideration when reading boolean values with trigger modes.
-     * 
-     * @example
-     * Usage example:
-     * bool value = EQSP32::readUserBool(2, ON_TOGGLE); // Reads the user-defined boolean value at index 2 with ON_TOGGLE trigger mode
-     */
-    bool readUserBool(int idx, TrigMode trigMode = STATE);
 
     /**
-     * @brief Reads a user-defined integer value from the EQSP32 database.
+     * @brief Configures a terminal pin for PCC (Pulse Capture Count) mode using one of the four available hardware pulse counters.
      * 
-     * This function allows you to read an integer value stored in the EQSP32 database at a specified index.
+     * PCC mode allows counting input pulses on selected EQSP32 terminal pins (9–16) using hardware-level pulse counters.
+     * This function sets up the specified pin to count rising, falling, or both edges, depending on the selected mode.
      * 
-     * @param idx The index of the user-defined integer value to read (1 to USER_NUM_INT).
+     * - Only terminal pins `9 through 16` support PCC mode.
+     * - A maximum of `four` of these pins can be used simultaneously due to hardware pulse counter limitations.
+     *   If you attempt to configure a fifth pin, the function will return `false`.
      * 
-     * @return The integer value stored in the EQSP32 database at the specified index. Returns 0 if the provided index is out of range (1 to USER_NUM_INT).
+     * If `configPCC()` is called for a pin that was not already set in PCC mode, the mode will be automatically assigned internally
+     * if allowed.
+     * 
+     * Supported trigger modes:
+     * - `ON_RISING`: counts on rising edges only (this is the default).
+     * - `ON_FALLING`: counts on falling edges only.
+     * - `ON_TOGGLE`: counts on both rising and falling edges.
+     * 
+     * Any unsupported or invalid mode will cause the function to return `false`.
+     * 
+     * @param pinIndex Terminal pin index to configure (must be between 9 and 16).
+     * @param pulseCaptureMode Trigger mode: `ON_RISING` by default.
+     * @return `true` if the pin was successfully configured; `false` otherwise.
      * 
      * @example
-     * Usage example:
-     * int value = EQSP32::readUserInt(3); // Reads the user-defined integer value at index 3
+     * eqsp32.configPCC(12);                  // Uses default ON_RISING
+     * eqsp32.configPCC(14, ON_FALLING);      // Falling edge counting
+     * eqsp32.configPCC(16, ON_TOGGLE);       // Both rising and falling edges
      */
-    int readUserInt(int idx);
+    bool configPCC(int pinIndex, EQ_TrigMode pulseCaptureMode = ON_RISING);
 
-    /**
-     * @brief Writes a boolean value to the EQSP32 database at a user-defined index.
-     * 
-     * This function allows you to write a boolean value to the EQSP32 database at a specified index.
-     * 
-     * @param idx The index where the boolean value will be stored (1 to USER_NUM_BOOL).
-     * @param value The boolean value to be stored in the EQSP32 database.
-     * 
-     * @example
-     * Usage example:
-     * EQSP32::writeUserBool(2, true); // Writes the boolean value 'true' to the user-defined index 2 in the EQSP32 database
-     */
-    void writeUserBool(int idx, bool value);
-
-    /**
-     * @brief Writes an integer value to the EQSP32 database at a user-defined index.
-     * 
-     * This function allows you to write an integer value to the EQSP32 database at a specified index.
-     * 
-     * @param idx The index where the integer value will be stored (1 to USER_NUM_INT).
-     * @param value The integer value to be stored in the EQSP32 database.
-     * 
-     * @example
-     * Usage example:
-     * EQSP32::writeUserInt(3, 42); // Writes the integer value '42' to the user-defined index 3 in the EQSP32 database
-     */
-    void writeUserInt(int idx, int value);
-
-        // DAC
-    /**
-     * @brief Sets the output voltage for a specified pin on the EQSP32 module using DAC functionality.
-     * 
-     * This function is intended for use with models of the EQSP32A models, that support analog functionality.
-     * It sets the output voltage on the specified pin in millivolts.
-     * The output can be set from 0 mV to 5000 mV.
-     * 
-     * @param pinIndex Can be EQ_AO_1 or EQ_AO_2, for analog output pin 1 and pin 2 of EQSP32A model.
-     * @param mVout Desired output voltage in millivolts. The value will be clamped to the DAC's supported voltage range if it is out of bounds.
-     * 
-     * @return True if the analog functionality is supported and the supported pins are used, false otherwise.
-     * 
-     * @example
-     * EQSP32 eqsp32;
-     * eqsp32.begin();
-     * 
-     * // Set a DAC output of 2500 millivolts on pin 1
-     * bool success = eqsp32.dacValue(EQ_AO_1, 2500);
-     * if (success) {
-     *     Serial.println("DAC value set successfully.");
-     * } else {
-     *     Serial.println("Operation failed or not supported.");
-     * }
-     */
-    bool dacValue(int pinIndex, float mVout);
     
         // Buzzer
     /**
@@ -765,6 +786,119 @@ public:
      */
     void buzzerOff();
 
+
+    /**
+     * @brief Turns on the BLE communication LED if EQSP32 is not managing it internally.
+     * 
+     * This function manually turns on the BLE status LED, but only if the `disableErqosIoT` flag
+     * in the `EQSP32Configs` structure is set to `true`. When this flag is enabled, EQSP32's
+     * internal background tasks will not control the BLE or Wi-Fi LEDs, allowing the developer
+     * to reflect connection states or events manually.
+     * 
+     * - Has no effect if `disableErqosIoT` is `false` (i.e., EQSP32 is actively managing BLE LED state).
+     * - The LED remains on until changed via `resetBleLed()` or `toggleBleLed()`.
+     * 
+     * @return `true` if the LED was successfully turned on; `false` otherwise.
+     * 
+     * @example
+     * eqsp32.setBleLed();  // Manually turns on the BLE LED
+     */
+    bool setBleLed();
+
+
+    /**
+     * @brief Turns off the BLE communication LED if EQSP32 is not managing it internally.
+     * 
+     * This function manually turns off the BLE status LED, but only if the `disableErqosIoT` flag
+     * in the `EQSP32Configs` structure is set to `true`. When this flag is enabled, EQSP32's
+     * internal background tasks will not control the BLE or Wi-Fi LEDs, allowing the developer
+     * to reflect connection states or events manually.
+     * 
+     * - Has no effect if `disableErqosIoT` is `false` (i.e., EQSP32 is actively managing BLE LED state).
+     * - The LED remains off until changed via `setBleLed()` or `toggleBleLed()`.
+     * 
+     * @return `true` if the LED was successfully turned off; `false` otherwise.
+     * 
+     * @example
+     * eqsp32.resetBleLed();  // Manually turns off the BLE LED
+     */
+    bool resetBleLed();
+
+
+    /**
+     * @brief Toggles the current state of the BLE communication LED if EQSP32 is not managing it internally.
+     * 
+     * This function manually toggles the BLE LED — turning it ON if it was OFF, or OFF if it was ON —
+     * but only if the `disableErqosIoT` flag in the `EQSP32Configs` structure is set to `true`.
+     * 
+     * - Has no effect if `disableErqosIoT` is `false` (i.e., EQSP32 is actively managing BLE LED state).
+     * - This is a single toggle action; it does not cause blinking or continuous toggling.
+     * - The resulting LED state remains until changed by another `toggleBleLed()` or other LED control function.
+     * 
+     * @return `true` if the LED state was successfully toggled; `false` otherwise.
+     * 
+     * @example
+     * eqsp32.toggleBleLed();  // Inverts BLE LED state (ON → OFF or OFF → ON)
+     */
+    bool toggleBleLed();
+
+
+    /**
+     * @brief Turns on the Wi-Fi communication LED if EQSP32 is not managing it internally.
+     * 
+     * This function manually turns on the Wi-Fi status LED, but only if the `disableErqosIoT` flag
+     * in the `EQSP32Configs` structure is set to `true`. When this flag is enabled, EQSP32's
+     * internal background tasks will not control the BLE or Wi-Fi LEDs, allowing the developer
+     * to reflect connection states or events manually.
+     * 
+     * - Has no effect if `disableErqosIoT` is `false` (i.e., EQSP32 is actively managing Wi-Fi LED state).
+     * - The LED remains on until changed via `resetWifiLed()` or `toggleWifiLed()`.
+     * 
+     * @return `true` if the LED was successfully turned on; `false` otherwise.
+     * 
+     * @example
+     * eqsp32.setWifiLed();  // Manually turns on the Wi-Fi LED
+     */
+    bool setWifiLed();
+
+
+    /**
+     * @brief Turns off the Wi-Fi communication LED if EQSP32 is not managing it internally.
+     * 
+     * This function manually turns off the Wi-Fi status LED, but only if the `disableErqosIoT` flag
+     * in the `EQSP32Configs` structure is set to `true`. When this flag is enabled, EQSP32's
+     * internal background tasks will not control the BLE or Wi-Fi LEDs, allowing the developer
+     * to reflect connection states or events manually.
+     * 
+     * - Has no effect if `disableErqosIoT` is `false` (i.e., EQSP32 is actively managing Wi-Fi LED state).
+     * - The LED remains off until changed via `setWifiLed()` or `toggleWifiLed()`.
+     * 
+     * @return `true` if the LED was successfully turned off; `false` otherwise.
+     * 
+     * @example
+     * eqsp32.resetWifiLed();  // Manually turns off the Wi-Fi LED
+     */
+    bool resetWifiLed();
+
+
+    /**
+     * @brief Toggles the current state of the Wi-Fi communication LED if EQSP32 is not managing it internally.
+     * 
+     * This function manually toggles the Wi-Fi LED — turning it ON if it was OFF, or OFF if it was ON —
+     * but only if the `disableErqosIoT` flag in the `EQSP32Configs` structure is set to `true`.
+     * 
+     * - Has no effect if `disableErqosIoT` is `false` (i.e., EQSP32 is actively managing Wi-Fi LED state).
+     * - This is a single toggle action; it does not cause blinking or continuous toggling.
+     * - The resulting LED state remains until changed by another `toggleWifiLed()` or other LED control function.
+     * 
+     * @return `true` if the LED state was successfully toggled; `false` otherwise.
+     * 
+     * @example
+     * eqsp32.toggleWifiLed();  // Inverts Wi-Fi LED state (ON → OFF or OFF → ON)
+     */
+    bool toggleWifiLed();
+
+
         // Power sensing
     /**
      * @brief Reads the input voltage supplied to the EQSP32 module in millivolts.
@@ -779,6 +913,7 @@ public:
      * int inputVoltage = eqsp32.readInputVoltage();
      */
     int readInputVoltage();
+
 
     /**
      * @brief Reads the output voltage provided by the EQSP32 module in millivolts.
@@ -795,6 +930,7 @@ public:
      * int outputVoltage = eqsp32.readOutputVoltage();
      */
     int readOutputVoltage();
+
 
         // RS232/RS485 serial communication
     /**
@@ -822,6 +958,7 @@ public:
      * bool isConfiguredCustom = eqsp32.configSerial(RS485_TX, 9600); // Configures the module for RS485 Transmit mode at 9600 baud
      */
     bool configSerial(EQSerialMode mode = RS232, int baud = 115200);
+
 
         // CAN-Bus communication
     /**
@@ -853,6 +990,7 @@ public:
      */
     bool configCAN(CanBitRates CAN_BITRATE, uint32_t canID = 0, bool loopBack = false);
 
+
     /**
      * @brief Configures the CAN bus to filter messages by Node ID only (CANopen-style).
      * 
@@ -875,6 +1013,7 @@ public:
      * eqsp32.configCANNode(CAN_500K, 0x21);    // Accepts all PDOs, SDOs, EMCY for Node ID 33 (0x21).
      */
     bool configCANNode(CanBitRates CAN_BITRATE, uint8_t nodeID);
+
 
     /**
      * @brief Transmits a CAN message using the EQSP32 CAN interface.
@@ -903,6 +1042,7 @@ public:
      */
     bool transmitCANFrame(CanMessage canMessage);
 
+
     /**
      * @brief Receives a CAN message using the EQSP32 CAN interface.
      * 
@@ -923,8 +1063,145 @@ public:
      */
     bool receiveCANFrame(CanMessage &canMessage);
 
-    // TODO add function description
+
+    /**
+     * @brief Retrieves the current Wi-Fi connection status of the EQSP32 module.
+     * 
+     * This function returns the current Wi-Fi status, indicating whether the EQSP32 is connected, disconnected,
+     * reconnecting, or scanning for available networks. The returned value corresponds to the `EQ_WifiStatus` enum.
+     * 
+     * The possible return values are:
+     * - EQ_WF_DISCONNECTED (0): Not connected to any Wi-Fi network.
+     * - EQ_WF_CONNECTED (1): Successfully connected to a Wi-Fi network.
+     * - EQ_WF_RECONNECTING (2): Attempting to reconnect after disconnection.
+     * - EQ_WF_SCANNING (3): Scanning for available networks.
+     * 
+     * @return The current Wi-Fi status as an `EQ_WifiStatus` enum.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * EQ_WifiStatus wifiStatus = eqsp32.getWiFiStatus();
+     * if (wifiStatus == EQ_WF_CONNECTED) {
+     *     Serial.println("Wi-Fi is connected.");
+     * } else {
+     *     Serial.println("Wi-Fi is not connected.");
+     * }
+     */
     EQ_WifiStatus getWiFiStatus();
+
+
+    /**
+     * @brief Retrieves the current Ethernet connection status of the EQSP32 module.
+     * 
+     * This function returns the current Ethernet status of the EQSP32, indicating whether a cable is plugged in,
+     * whether the Ethernet connection is established and online, or if the Ethernet interface has been stopped.
+     * The returned value corresponds to the `EQ_EthernetStatus` enum.
+     * 
+     * The possible return values are:
+     * - EQ_ETH_DISCONNECTED (0): No Ethernet cable detected or no link.
+     * - EQ_ETH_CONNECTED (1): Ethernet is connected and online.
+     * - EQ_ETH_PLUGGED_IN (2): Cable is detected, but connection is not yet online (e.g., IP not acquired).
+     * - EQ_ETH_STOPPED (3): Ethernet interface is stopped, disabled or not detected (might be non-ethernet EQSO32 version).
+     * 
+     * @return The current Ethernet status as an `EQ_EthernetStatus` enum.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * EQ_EthernetStatus ethStatus = eqsp32.getEthernetStatus();
+     * if (ethStatus == EQ_ETH_CONNECTED) {
+     *     Serial.println("Ethernet is online.");
+     * } else {
+     *     Serial.println("Ethernet is not connected or not ready.");
+     * }
+     */
+    EQ_EthernetStatus getEthernetStatus();
+
+
+    /**
+     * @brief Returns the current IP address of the EQSP32 device.
+     *
+     * If the device is not online (neither Ethernet nor Wi-Fi connected), the function returns "0.0.0.0".
+     * If the device is online, it returns the IP address of the active interface:
+     * - Ethernet IP address if Ethernet is connected.
+     * - Wi-Fi IP address if Wi-Fi is connected and Ethernet is not.
+     *
+     * @return String representing the device's current IP address, or "0.0.0.0" if offline.
+     */
+    String localIP();
+
+
+    /**
+     * @brief Checks if the EQSP32 device is currently online via either Wi-Fi or Ethernet.
+     * 
+     * This function determines whether the EQSP32 module is currently connected to a network.
+     * It returns true if either the Wi-Fi interface is connected (`EQ_WF_CONNECTED`) or the Ethernet interface
+     * is connected and online (`EQ_ETH_CONNECTED`). If neither interface is connected, it returns false.
+     * 
+     * This is useful for checking network availability before attempting operations that require
+     * internet access.
+     * 
+     * @return true if either Wi-Fi or Ethernet is connected and online, false otherwise.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * if (eqsp32.isDeviceOnline()) {
+     *     Serial.println("Device is online.");
+     * } else {
+     *     Serial.println("Device is offline.");
+     * }
+     */
+    bool isDeviceOnline();
+
+
+    /**
+     * @brief Retrieves the user-defined name of the EQSP32 device.
+     * 
+     * This function returns the current name assigned to the EQSP32 device by the end user.
+     * The name is stored persistently and used across various services and interfaces for
+     * identification and presentation.
+     * 
+     * The device name is internally applied in:
+     * - BLE advertising and identification (takes effect only after reboot)
+     * - Web server hostname (access via `http://DeviceName.home:8000`, where spaces from DeviceName are replaced with dashes and special characters are removed)
+     * - Arduino OTA (used as the OTA target name)
+     * - Home Assistant auto-discovery (used as the device name in the discovered MQTT device)
+     * 
+     * @note This name is editable by the end user at any time from EQConnect.
+     * 
+     * @return The user-defined device name as an Arduino `String`.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * String name = eqsp32.getDeviceName();
+     * Serial.print("Device Name: ");
+     * Serial.println(name);
+     */
+    String getDeviceName();
+
+
+    /**
+     * @brief Retrieves the unique device ID assigned by the system.
+     * 
+     * This function returns a persistent, globally unique identifier for the EQSP32 device,
+     * formatted as `EQSP32_XXXXXX`, where `XXXXXX` represents the last 3 bytes of the MAC address
+     * in uppercase hexadecimal format (e.g., `EQSP32_A1B2C3`).
+     * 
+     * This ID is automatically generated and cannot be changed by the user. It is guaranteed
+     * to remain constant across reboots.
+     * It may be used by the developer as a unique identifier and
+     * it is internally used in the MQTT topic generation structure.
+     * 
+     * @return The system-generated unique device ID as an Arduino `String`.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * String id = eqsp32.getDeviceID();
+     * Serial.print("Device ID: ");
+     * Serial.println(id); // Output: EQSP32_A1B2C3 if device WiFi MAC ends in A1B2C3
+     */
+    String getDeviceID();
+
+
 
     /**
      * @brief Prints the current local time to the serial output in a human-readable format.
@@ -943,6 +1220,7 @@ public:
      * eqsp32.printLocalTime(); // Prints the current local time or logs an error if unavailable.
      */
     void printLocalTime();
+
 
     /**
      * @brief Checks if the local time is synchronized with the NTP server.
@@ -1003,6 +1281,7 @@ public:
      * }
      */
     EQ_WeekDay getLocalWeekDay();
+
 
     /**
      * @brief Retrieves the current day of the year from the local time.
@@ -1188,7 +1467,8 @@ public:
      */
     int getLocalHour();
 
-        /**
+
+    /**
      * @brief Retrieves the current minutes from the local time.
      * 
      * This function returns the current minutes (0-59) based on the local system time. If the local time cannot be 
@@ -1214,6 +1494,7 @@ public:
      * }
      */
     int getLocalMins();
+
 
     /**
      * @brief Retrieves the current seconds from the local time.
@@ -1253,10 +1534,205 @@ public:
      */
     int getLocalSecs();
 
+    /**
+     * @brief Retrieves the number of full days the EQSP32 has been running since power-up.
+     * 
+     * This function returns the number of whole days (24-hour periods) that have passed
+     * since the EQSP32 was last powered on or reset.
+     * 
+     * It is based on the internal uptime counter and is useful for monitoring
+     * system runtime, debugging, and diagnostics.
+     * 
+     * @return The uptime in full days as an `int`.
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * int days = eqsp32.getUptimeDays();
+     * Serial.print("Uptime (days): ");
+     * Serial.println(days);
+     */
+    int getUptimeDays();
 
+
+    /**
+     * @brief Retrieves the current hour value (0–23) from the uptime counter.
+     * 
+     * This function returns the number of full hours that have passed
+     * since the last full 24-hour period (i.e., the hours within the current uptime day).
+     * 
+     * For example, if the device has been running for 1 day and 5 hours,
+     * this function will return `5`.
+     * 
+     * It is useful for building a full uptime breakdown in days, hours, minutes, and seconds.
+     * 
+     * @return The number of uptime hours within the current day (0–23).
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * int h = eqsp32.getUptimeHours();
+     * Serial.print("Hours today: ");
+     * Serial.println(h);
+     */
+    int getUptimeHours();
+
+
+    /**
+     * @brief Retrieves the current minute value (0–59) from the uptime counter.
+     * 
+     * This function returns the number of full minutes that have passed
+     * since the last full hour of uptime (i.e., the minutes within the current uptime hour).
+     * 
+     * For example, if the device has been running for 1 day, 5 hours, and 42 minutes,
+     * this function will return `42`.
+     * 
+     * It is useful for building a complete uptime display in days, hours, minutes, and seconds.
+     * 
+     * @return The number of uptime minutes within the current hour (0–59).
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * int m = eqsp32.getUptimeMinutes();
+     * Serial.print("Minutes this hour: ");
+     * Serial.println(m);
+     */
+    int getUptimeMinutes();
+
+
+    /**
+     * @brief Retrieves the current second value (0–59) from the uptime counter.
+     * 
+     * This function returns the number of full seconds that have passed
+     * since the last full minute of uptime (i.e., the seconds within the current uptime minute).
+     * 
+     * For example, if the device has been running for 1 day, 5 hours, 42 minutes, and 17 seconds,
+     * this function will return `17`.
+     * 
+     * It is useful for building a complete uptime display in days, hours, minutes, and seconds.
+     * 
+     * @return The number of uptime seconds within the current minute (0–59).
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * int s = eqsp32.getUptimeSeconds();
+     * Serial.print("Seconds this minute: ");
+     * Serial.println(s);
+     */
+    int getUptimeSeconds();
+
+
+    /**
+     * @brief Prints the system uptime in a human-readable format.
+     * 
+     * This function retrieves the number of days, hours, minutes, and seconds
+     * the EQSP32 has been running since power-up, and prints it to the default `Serial` output.
+     * 
+     * Format:
+     * 
+     *     Uptime: <days>d <hours>h <minutes>m <seconds>s
+     * 
+     * Example output:
+     * 
+     *     Uptime: 3d 12h 45m 8s
+     * 
+     * Useful for quick debugging, logging, or diagnostics from the serial console.
+     * 
+     * @note Output is printed to the global `Serial` object
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * eqsp32.printUptime();
+     */
+    void printUptime();
+
+
+    /**
+     * @brief Retrieves the current local time as a Unix timestamp.
+     * 
+     * This function returns the current local time (with timezone offset applied) as a Unix timestamp,
+     * representing the number of seconds that have passed since January 1, 1970 (UTC).
+     * 
+     * It uses the EQSP32's internal timekeeping system, which is typically synchronized via NTP
+     * if internet access is available. If the time is not synchronized, the returned value may be inaccurate
+     * and based on the device's unsynchronized internal clock or default time after reboot.
+     * 
+     * This is useful for timestamping events, logging, scheduling tasks, or synchronizing with external systems.
+     * 
+     * @return The local time as a Unix timestamp (`long`, in seconds since Jan 1, 1970).
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * long ts = eqsp32.getLocalUnixTimestamp();
+     * Serial.print("Current local timestamp: ");
+     * Serial.println(ts);
+     */
     long getLocalUnixTimestamp();
+
+
+    /**
+     * @brief Retrieves the current local time as a formatted string.
+     * 
+     * This function returns the local time as a human-readable string in the format:
+     * 
+     *     "MM-DD-YYYY HH:MM:SS"
+     * 
+     * The local time includes timezone offset and is typically synchronized via NTP when internet access is available.
+     * If time synchronization has not occurred, the returned time may reflect the default RTC time since power-up.
+     * 
+     * This function is useful for logging, display on dashboards, or sending human-readable timestamps
+     * over MQTT or to external systems.
+     * 
+     * @return The formatted local time as a `std::string` (in the format "MM-DD-YYYY HH:MM:SS").
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * std::string timeStr = eqsp32.getFormattedLocalTime();
+     * Serial.print("Current local time: ");
+     * Serial.println(timeStr.c_str());
+     */
     std::string getFormattedLocalTime();
+
+
+    /**
+     * @brief Retrieves the current system time as a Unix timestamp (UTC).
+     * 
+     * This function returns the current system time in UTC (Coordinated Universal Time)
+     * as a Unix timestamp — the number of seconds since January 1, 1970, 00:00:00 UTC.
+     * 
+     * Unlike `getLocalUnixTimestamp()`, this value does not include any timezone or daylight savings offset.
+     * It reflects the raw system clock time, which is typically synchronized via NTP if internet access is available.
+     * 
+     * If time synchronization has not yet occurred, the result will be based on the default time of the internal RTC counter since boot.
+     * 
+     * @return The current UTC timestamp as a `long` (seconds since Jan 1, 1970).
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * long utc = eqsp32.getUnixTimestamp();
+     * Serial.print("Current UTC timestamp: ");
+     * Serial.println(utc);
+     */
     long getUnixTimestamp();
+
+    /**
+     * @brief Retrieves the current UTC time as a formatted string.
+     * 
+     * This function returns the current UTC time in a human-readable string format:
+     * 
+     *     "MM-DD-YYYY HH:MM:SS"
+     * 
+     * This is useful for logging or display purposes where timestamps need to be
+     * shown in Coordinated Universal Time, unaffected by local timezone offsets.
+     * 
+     * If time synchronization has not occurred, the result will reflect the default system time since power-up.
+     * 
+     * @return The formatted UTC time as a `std::string` (in the format "MM-DD-YYYY HH:MM:SS").
+     * 
+     * @example
+     * EQSP32 eqsp32;
+     * std::string utcStr = eqsp32.getFormattedUnixTimestamp();
+     * Serial.print("UTC time: ");
+     * Serial.println(utcStr.c_str());
+     */
     std::string getFormattedUnixTimestamp();
 
 private:
@@ -1264,6 +1740,9 @@ private:
     EQ_Private* eqPrivate;
 };
 
+#if ESP_ARDUINO_VERSION_MAJOR > 2
+#define Serial Serial0
+#endif
 
 /**
  * @brief EQTimer class for managing timing operations.
