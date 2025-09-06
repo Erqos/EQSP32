@@ -289,6 +289,10 @@ typedef struct
     std::string userDevName = "";        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
     std::string wifiSSID = "";          // (Optional) Default network SSID
     std::string wifiPassword = "";      // (Optional) Default network password
+    std::string staticIP = "0.0.0.0";   // (Default) (Optional) Leave as 0.0.0.0 to enable DHCP
+    std::string gateway = "0.0.0.0";
+    std::string subnet = "0.0.0.0";
+    std::string DNS = "0.0.0.0";
     bool relaySequencer = false;
     bool mqttDiscovery = false;
     bool disableErqosIoT = false;
@@ -1948,7 +1952,7 @@ private:
  */
 // Overloads for when developing for HA only
 void createControl_Switch(std::string name, std::string iconType_HA = "");
-void createControl_Value(std::string name, int minValue, int maxValue, int decimals, std::string iconType_HA = "");
+void createControl_Value(std::string name, int minValue = 0, int maxValue = 1000, int decimals = 0, std::string iconType_HA = "");
 
 bool readControl_Switch(const std::string& name);
 float readControl_Value(const std::string& name);
@@ -1960,7 +1964,7 @@ bool updateControl_Value(const std::string& name, float value);
 // binSensorType_HA (which could be omitted) could be one of the binary sensor types listed at https://www.home-assistant.io/integrations/binary_sensor/
 void createDisplay_BinarySensor(std::string name, std::string iconType_HA = "", std::string binSensorType_HA = "");
 // sensorType_HA (which could be omitted) could be one of the sensor types listed at https://www.home-assistant.io/integrations/sensor/
-void createDisplay_Sensor(std::string name, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
+void createDisplay_Sensor(std::string name, int decimals = 0, std::string unit = "", std::string iconType_HA = "", std::string sensorType_HA = "");
 
 bool readDisplay_BinarySensor(const std::string& name);
 float readDisplay_Sensor(const std::string& name);
