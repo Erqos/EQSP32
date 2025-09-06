@@ -7,7 +7,7 @@
  * 
  * Features:
  * - Digital Input (DIN): Reads a digital HIGH/LOW signal.
- * - Analog Input (AIN): Reads an analog voltage (0-5000mV).
+ * - Analog Input (AIN): Reads an analog voltage (0-5000mV and up to 10000mV for EQSP32CE version).
  * - Switch Input (SWT): Detects button press with a debounce timer.
  * - Temperature Input (TIN): Reads temperature via an NTC sensor.
  * - Power Output (POUT): Controls a PWM output.
