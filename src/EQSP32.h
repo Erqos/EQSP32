@@ -296,6 +296,7 @@ typedef struct
     bool relaySequencer = false;
     bool mqttDiscovery = false;
     bool disableErqosIoT = false;
+    bool disableNetSwitching = false;
 } EQSP32Configs;
 
 
@@ -1132,6 +1133,34 @@ public:
      * @return String representing the device's current IP address, or "0.0.0.0" if offline.
      */
     String localIP();
+
+
+    /**
+     * @brief Returns the current Ethernet IP address of the EQSP32 device.
+     *
+     * If the device is connected to Ethernet, this function returns its assigned
+     * Ethernet IP address as a String.
+     * 
+     * If Ethernet is not connected, the function returns "0.0.0.0", even if the device
+     * is online via Wi-Fi.
+     *
+     * @return String representing the Ethernet IP address, or "0.0.0.0" if Ethernet is not connected.
+     */
+    String ethernetIP();
+
+
+    /**
+     * @brief Returns the current Wi-Fi IP address of the EQSP32 device.
+     *
+     * If the device is connected to Wi-Fi, this function returns its assigned
+     * Wi-Fi IP address as a String.
+     * 
+     * If Wi-Fi is not connected, the function returns "0.0.0.0", even if the device
+     * is online via Ethernet.
+     *
+     * @return String representing the Wi-Fi IP address, or "0.0.0.0" if Wi-Fi is not connected.
+     */
+    String wifiIP();
 
 
     /**

@@ -36,6 +36,8 @@ getWiFiStatus		KEYWORD2
 getEthernetStatus	KEYWORD2
 isDeviceOnline		KEYWORD2
 localIP			KEYWORD2
+ethernetIP		KEYWORD2
+wifiIP			KEYWORD2
 
 # Power Supply Monitoring
 readInputVoltage	KEYWORD2
