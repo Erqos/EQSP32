@@ -51,10 +51,15 @@
 #define EQ_CAN_TX       25
 #define EQ_CAN_RX       26
 
+#define EQ_RS485_2_TX   27
+#define EQ_RS485_2_RX   28
+#define EQ_RS485_2_EN   29
+
 #define IS_ADIO_PIN(p)      (p >= EQ_PIN_1 && p <= EQ_PIN_16 ? true : false)
 #define IS_RS232_PIN(p)     (p == EQ_RS232_TX || p == EQ_RS232_RX ? true : false)
 #define IS_RS485_PIN(p)     (p >= EQ_RS485_TX && p <= EQ_RS485_EN ? true : false)
 #define IS_CAN_PIN(p)       (p == EQ_CAN_TX || p == EQ_CAN_RX ? true : false)
+#define IS_2xRS485_PIN(p)   (p >= EQ_RS485_2_TX && p <= EQ_RS485_2_EN ? true : false)
 
 /**
  *      EQX - EQSP32 Expansion module pin codes and channels
