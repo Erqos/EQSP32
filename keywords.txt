@@ -11,6 +11,13 @@ EQ_TrigMode   	KEYWORD1
 EQ_WeekDay	KEYWORD1
 EQ_WifiStatus	KEYWORD1
 
+
+###########################################
+# EQSP32 Global Objects (KEYWORD2)
+###########################################
+eqx2gStream    KEYWORD2
+
+
 ###########################################
 # EQSP32 Library Functions (KEYWORD2)
 ###########################################
@@ -124,6 +131,8 @@ EQXIO	KEYWORD2
 EQXPH	KEYWORD2
 EQXTC	KEYWORD2
 EQXPT	KEYWORD2
+EQXAI	KEYWORD2
+EQX2G	KEYWORD2
 
 CONVERT_AIN          KEYWORD2
 CONVERT_TIN          KEYWORD2

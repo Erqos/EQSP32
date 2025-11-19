@@ -15,7 +15,8 @@
 #include "driver/mcpwm.h"
 #include "driver/twai.h"
 
-#define POUT_PATCH(eq, pin, mode)    do {int native = eq.getPin(pin); eq.pinMode(pin, mode); pinMode(native, OUTPUT);} while (0);
+
+#define TINY_GSM_MODEM_SIM800
 
 
 /**
@@ -64,6 +65,8 @@
 /**
  *      EQX - EQSP32 Expansion module pin codes and channels
  */
+extern Stream& eqx2gStream;
+
 // ==========================
 // EQXTC - Thermocouple Module
 // ==========================
@@ -137,27 +140,40 @@
 #define EQ_AUX_4(pin)       SLAVE_4(pin)
 
 // (EQX Modules)
+// I/O modules
 #define MAX_MODULE_TYPES    0xFF
 #define EQXIO_ID            0x01        // ADIO module                  (Supported)
-#define EQXSTEP_ID          0x02        // Stepper driver module
+#define EQXAI_ID            0x02        // Analog input voltage and 4-20mA
+// #define EQXAO_ID            0x03        // Analog output voltage and 4-20mA
+
+// IoT modules
+// #define EQXLORA_ID          0xE0      // Lora/LoraWan module
+#define EQX2G_ID            0xE1      // 2G GSM/GPRS module
+
+// Input sensor modules
 #define EQXPH_ID            0x10        // PH sensor module             (Supported)
 #define EQXTC_ID            0x20        // Thermocouple sensor module   (Supported)
 #define EQXPT_ID            0x30        // PT100 sensor module          (Supported)
-#define EQXCI_ID            0x50        // Current input sensor [4-20mA analog input]
-#define EQXCS_ID            0x50        // Current sensor module
-#define EQXLC_ID            0x60        // Load cell sensor module
 
 
 #define EQXIO_MACRO(idx, pin)     (MODULE_SHIFT(EQXIO_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXAI_MACRO(idx, pin)     (MODULE_SHIFT(EQXAI_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+
 #define EQXPH_MACRO(idx, pin)     (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #define EQXTC_MACRO(idx, pin)     (MODULE_SHIFT(EQXTC_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #define EQXPT_MACRO(idx, pin)     (MODULE_SHIFT(EQXPT_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 
+#define EQX2G_MACRO(idx, pin)     (MODULE_SHIFT(EQX2G_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+
 // Inline wrappers with default pin = 0
 inline uint32_t EQXIO(int idx, int pin = 0) { return EQXIO_MACRO(idx, pin); }
+inline uint32_t EQXAI(int idx, int pin = 0) { return EQXAI_MACRO(idx, pin); }
+
 inline uint32_t EQXPH(int idx, int pin = 0) { return EQXPH_MACRO(idx, pin); }
 inline uint32_t EQXTC(int idx, int pin = 0) { return EQXTC_MACRO(idx, pin); }
 inline uint32_t EQXPT(int idx, int pin = 0) { return EQXPT_MACRO(idx, pin); }
+
+inline uint32_t EQX2G(int idx = 1, int pin = 0) { return EQX2G_MACRO(idx, pin); }
 
 // EQSP32 pin modes
 enum EQ_PinMode : uint8_t {
