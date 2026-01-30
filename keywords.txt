@@ -10,6 +10,10 @@ EQ_PinMode	KEYWORD1
 EQ_TrigMode   	KEYWORD1
 EQ_WeekDay	KEYWORD1
 EQ_WifiStatus	KEYWORD1
+EQ_EthernetStatus	KEYWORD1
+CanBitRates	KEYWORD1
+EQ_InitStatus	KEYWORD1
+
 
 
 ###########################################
@@ -24,6 +28,12 @@ eqx2gStream    KEYWORD2
 
 # Initialization
 begin		KEYWORD2
+
+# Begin status
+initStatus	KEYWORD2
+
+# On board button
+readUserButton	KEYWORD2
 
 # Pin Usage and Configuration
 pinMode		KEYWORD2
@@ -113,19 +123,6 @@ getDeviceID	KEYWORD2
 ######################################
 # EQSP32 Macros (KEYWORD2)
 #######################################
-# EQ main/aux module configuration
-MASTER          KEYWORD2
-SLAVE_1         KEYWORD2
-SLAVE_2         KEYWORD2
-SLAVE_3         KEYWORD2
-SLAVE_4         KEYWORD2
-
-EQ_MAIN         KEYWORD2
-EQ_AUX_1        KEYWORD2
-EQ_AUX_2        KEYWORD2
-EQ_AUX_3        KEYWORD2
-EQ_AUX_4        KEYWORD2
-
 # EQxM (EQ expansion modules)
 EQXIO	KEYWORD2
 EQXPH	KEYWORD2
@@ -252,12 +249,12 @@ CIN_OC_ERROR		LITERAL1
 
 TIN_OPEN_CIRCUIT	LITERAL1
 TIN_SHORT_CIRCUIT	LITERAL1
-IS_TIN_VALID	LITERAL1
+IS_TIN_VALID	KEYWORD2
 
 TC_FAULT_OPEN	LITERAL1
 TC_FAULT_SHORT_GND	LITERAL1
 TC_FAULT_SHORT_VCC	LITERAL1
-IS_TC_VALID	LITERAL1
+IS_TC_VALID	KEYWORD2
 
 PT_FAULT_THR_HIGH	LITERAL1
 PT_FAULT_THR_LOW	LITERAL1
@@ -265,8 +262,24 @@ PT_FAULT_REFIN_LOW	LITERAL1
 PT_FAULT_REFIN_HIGH	LITERAL1
 PT_FAULT_RTDIN_LOW	LITERAL1
 PT_FAULT_OVUV	LITERAL1
-IS_PT_VALID	LITERAL1
+IS_PT_VALID	KEYWORD2
 
+CONVERT_AIN   KEYWORD2
+CONVERT_TIN   KEYWORD2
+CONVERT_CIN   KEYWORD2
+CONVERT_PH    KEYWORD2
+CONVERT_TC    KEYWORD2
+CONVERT_PT    KEYWORD2
+
+
+###########################################
+# MQTT Global Topics (not UID based) for Node-RED, direct device access etc. (KEYWORD2)
+###########################################
+createGlobal_Topic	KEYWORD2
+readGlobal_Topic	KEYWORD2
+readGlobal_TopicBOOL	KEYWORD2
+readGlobal_TopicFLOAT	KEYWORD2
+updateGlobal_Topic	KEYWORD2
 
 ###########################################
 # MQTT Control Entities for Home Assistant, Node-RED, etc. (KEYWORD2)

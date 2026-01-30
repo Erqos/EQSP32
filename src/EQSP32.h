@@ -16,6 +16,11 @@
 #include "driver/twai.h"
 
 
+#ifndef EQSP32_REMOVE_NOTES         // To disable EQSP32 notes during build use {#define EQSP32_REMOVE_NOTES} before {include "EQSP32.h"}
+#warning "EQXIO NOTICE: New EQXIO firmware available. If you are using the EQXIO module, please update to latest firmware version, else the EQSP32 will reject it."
+#endif
+
+
 #define TINY_GSM_MODEM_SIM800
 
 
@@ -24,8 +29,8 @@
  */
 // User available pin codes
 #define EQ_PIN_1        1
-#define EQ_PIN_3        3
 #define EQ_PIN_2        2
+#define EQ_PIN_3        3
 #define EQ_PIN_4        4
 #define EQ_PIN_5        5
 #define EQ_PIN_6        6
@@ -142,7 +147,7 @@ extern Stream& eqx2gStream;
 // (EQX Modules)
 // I/O modules
 #define MAX_MODULE_TYPES    0xFF
-#define EQXIO_ID            0x01        // ADIO module                  (Supported)
+#define EQXIO_ID            0x01        // DIO module                  (Supported)
 #define EQXAI_ID            0x02        // Analog input voltage and 4-20mA
 // #define EQXAO_ID            0x03        // Analog output voltage and 4-20mA
 
@@ -181,15 +186,15 @@ enum EQ_PinMode : uint8_t {
     CUSTOM  = 0xFE,
     INIT_NA = 0xFD,
     DIN     = 0,        //                                                  |IOEXP pin LOW (1-8), HIGH (9-16)
-    DOUT,               // Not used
+    DOUT,               // N/A
     AIN,                //                                                  |IOEXP pin LOW (1-8)
     CIN,                // Current input mode, returns mA x 100             |IOEXP pin HIGH (1-8)       (Must hasIOEXP be true)
     PCC,    // (Beta)   // Pulse Capture Counter mode, counted pulses are cleared on each readPin() call for the respective pin
     POUT,               //                                                  |IOEXP pin LOW (1-8), LOW (9-16)
-    AOUT,
+    AOUT,               // N/A
         // Special modes
     SWT     = 8,        // Special DIN mode with debouncing timer
-    TIN,                // Special AIN mode, automatic temperature convertion
+    TIN,                // Special AIN mode, automatic temperature conversion
     RELAY,              // Special POUT mode, starts with set power and after set time drops to holding power
     RAIN,               // Relative analog input, this returns a value of 0-1000 representing the % of read value versus the VOut reference voltage
 
@@ -212,16 +217,16 @@ enum EQ_PinMode : uint8_t {
 #define TIN_TO_C_MULT       10.0        // TIN values are in C * 10
 #define CIN_TO_mA_MULT      100.0       // CIN values are in mA * 100
 
-#define PH_TO_PH_MUL        100.0       // PH values are in pH * 100
-#define TC_TO_C_MUL         10.0        // TC values are in C * 10
-#define PT_TO_C_MUL         100.0       // PT values are in C * 100 (higher precision temperature measurements that the other modes)
+#define PH_TO_PH_MULT       100.0       // PH values are in pH * 100
+#define TC_TO_C_MULT        10.0        // TC values are in C * 10
+#define PT_TO_C_MULT         100.0       // PT values are in C * 100 (higher precision temperature measurements that the other modes)
 
 inline float CONVERT_AIN(int readPinValue) { return ( (float)readPinValue / AIN_TO_V_MULT ); }
 inline float CONVERT_TIN(int readPinValue) { return ( (float)readPinValue / TIN_TO_C_MULT ); }
 inline float CONVERT_CIN(int readPinValue) { return ( (float)readPinValue / CIN_TO_mA_MULT ); }
-inline float CONVERT_PH(int readPinValue) { return ( (float)readPinValue / PH_TO_PH_MUL ); }
-inline float CONVERT_TC(int readPinValue) { return ( (float)readPinValue / TC_TO_C_MUL ); }
-inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO_C_MUL ); }
+inline float CONVERT_PH(int readPinValue) { return ( (float)readPinValue / PH_TO_PH_MULT ); }
+inline float CONVERT_TC(int readPinValue) { return ( (float)readPinValue / TC_TO_C_MULT ); }
+inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO_C_MULT ); }
 
 // ====================================
 
@@ -246,6 +251,13 @@ inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO
 #define PT_FAULT_OVUV       0x800004    // PT sensor Over/Under voltage             (Voltage error)
 #define IS_PT_VALID(value) (((value) & 0xFF800000) != 0x800000)      // Macro to check if a PT sensor value is valid (we check error bit or if negative temperature)
 
+
+enum EQ_InitStatus : uint8_t {
+    INIT_NOT_STARTED,    // `begin()` has not been called yet.
+    INIT_STARTED,        // `begin()` has been called and initialization is still in progress.
+    INIT_OK,        // Initialization completed successfully; the EQSP32 core is ready.
+    INIT_ERROR      // Initialization finished but one or more errors occurred during startup.
+};
 
 enum EQ_TrigMode : uint8_t {
     STATE,
@@ -318,6 +330,7 @@ typedef struct
     bool mqttDiscovery = false;
     bool disableErqosIoT = false;
     bool disableNetSwitching = false;
+    int bleBroadcastingMins = 3;        // Only if disableErqosIoT == false. BLE will broadcast for these many mins before turning off (setting to 0 makes BLE always available). If BLE turns off, pressing the BOOT button or webserver access is needed to reenable it.
 } EQSP32Configs;
 
 
@@ -329,37 +342,71 @@ class EQ_Private;       // Forward declaration of the nested private class
 #endif
 
 /**
- * @brief EQSP32 ESP32 Industrial IoT PLC Controller.
- * 
- * The EQSP32 class provides a comprehensive interface for interacting with the EQSP32 IoT controller.
- * This class includes methods for initializing the module, configuring and controlling ADIO (analog/digital I/O) pins and their special modes, handling industrial communications (RS232, RS485, CANBus),
- * handling user cloud variables, IoT connectivity with cloud server (Firebase), and handling
- * MQTT device interfaces for Home Assistant integration.
- * 
- * @note It is critical to call the `begin()` function at the beginning of your EQSP32 application for proper operation.
- * 
+ * @brief EQSP32 ESP32-based Industrial IoT PLC Controller.
+ *
+ * The EQSP32 class is the main interface for configuring, controlling, and monitoring
+ * the EQSP32 Industrial IoT controller.
+ *
+ * It provides APIs for:
+ * - System initialization and lifecycle management (see `begin()`)
+ * - Configuring and controlling onboard ADIO pins (digital/analog and special modes)
+ * - Interfacing with EQX expansion modules (e.g., EQXIO, EQXAI, EQXPH, EQXTC, EQXPT, EQX2G)
+ * - Industrial communication interfaces (RS232, RS485, CAN bus)
+ * - Device/network status accessors (Wi-Fi/Ethernet state, IP address, device name/ID)
+ * - Integrated MQTT device interfacing for platforms such as Home Assistant / Node-RED
+ *   (MQTT topic handling and discovery are managed internally by the library)
+ *
+ * The EQSP32 library can manage Wi-Fi and BLE provisioning (via EQConnect) and runs
+ * background system tasks required for connectivity and device services. In typical
+ * applications, user code should not initialize Wi-Fi manually unless the internal IoT
+ * core is explicitly disabled using `EQSP32Configs::disableErqosIoT`.
+ *
+ * @note
+ * It is mandatory to call `begin()` before using any other EQSP32 functionality.
+ *
  * @example
- * Usage example:
- * 
  * @code
  * #include <EQSP32.h>
- * 
+ *
  * EQSP32 eqsp32;
- * 
+ *
  * void setup() {
  *     EQSP32Configs configs;
- *     configs.devSystemID = "SYSTEM_ID";                       // Needed for custom mobile app
- *     configs.userDevName = "Device Name";                     // Optional
- *     configs.wifiSSID = "YourSSID";                           // Optional
- *     configs.wifiPassword = "YourPassword";                   // Optional
- *     configs.relaySequencer = true;                           // Default false
- *     configs.mqttDiscovery = true;                            // Optional
- * 
- *     eqsp32.begin(configs, true);
+ *
+ *     // MQTT broker configuration (defaults shown)
+ *     configs.mqttBrokerIp   = "homeassistant.local";
+ *     configs.mqttBrokerPort = 1883;
+ *     configs.mqtt_broker_ca = "";              // Optional CA certificate (empty if not required)
+ *
+ *     // Device identity (optional)
+ *     configs.devSystemID = "SYSTEM_ID";        // Developer/system identifier
+ *     configs.userDevName = "Device Name";      // User-visible device name
+ *
+ *     // Optional Wi-Fi defaults (can also be provisioned via EQConnect)
+ *     configs.wifiSSID     = "YourSSID";
+ *     configs.wifiPassword = "YourPassword";
+ *
+ *     // Optional static IP (leave "0.0.0.0" to use DHCP)
+ *     configs.staticIP = "0.0.0.0";
+ *     configs.gateway  = "0.0.0.0";
+ *     configs.subnet   = "0.0.0.0";
+ *     configs.DNS      = "0.0.0.0";
+ *
+ *     // Features / behavior
+ *     configs.relaySequencer      = true;       // Default false
+ *     configs.mqttDiscovery       = true;       // Default false
+ *     configs.disableErqosIoT     = false;      // Default false (library manages Wi-Fi/BLE)
+ *     configs.disableNetSwitching = false;      // Default false
+ *
+ *     // BLE advertising window (only used when disableErqosIoT == false)
+ *     configs.bleBroadcastingMins = 3;          // 0 = always advertise, default 3 minutes
+ *
+ *     eqsp32.begin(configs, true);              // true enables verbose debug logs
  * }
- * 
+ *
  * void loop() {
- *     // Your main code
+ *     // User application logic
+ *     delay(10);
  * }
  * @endcode
  */
@@ -372,29 +419,105 @@ public:
 
         // Main EQ initialization
     /**
-     * @brief Initializes the EQSP32 module.
-     * 
-     * This function MUST be called at the beginning of your application for the EQSP32 module to run properly.
-     * The initialization includes:
-     * 
-     * - Setting up peripheral communication.
-     * - Initializing WiFi and BLE modules.
-     * - Configuring all pins in safe Digital Input (DIN) state.
-     * - Initializing RS232 serial communication, default 115200 baud.
-     * - Initiating the EQSP32 System Manager Task for continuous system management.
-     * - Starting database-related tasks for data storage and retrieval.
-     * 
-     * @attention Create a single EQSP32 eqsp32; object and use this for all operations to avoid conflicts.
-     * 
-     * @note It is CRITICAL to call this function at the beginning of your EQSP32 application for proper operation.
-     * 
+     * @brief Initializes the EQSP32 core and starts required background services.
+     *
+     * This function MUST be called once at the beginning of your application before using
+     * any other EQSP32 APIs.
+     *
+     * What `begin()` does (high level):
+     * - Initializes internal drivers and peripherals used by the library (I/O, comms, etc.).
+     * - Places onboard ADIO pins into a safe default state (Digital Input) until the user configures them.
+     * - Initializes serial interfaces used by EQSP32 (e.g., Serial2 reference in the class, and default comm setup).
+     * - Starts the EQSP32 internal system/background tasks required for runtime services and module handling.
+     *
+     * Networking / IoT core behavior:
+     * - If `EQSP32Configs::disableErqosIoT == false` (default), the library may manage connectivity services
+     *   such as Wi-Fi/BLE provisioning (EQConnect workflow), network switching, and MQTT interfacing
+     *   (including discovery when enabled).
+     * - If `disableErqosIoT == true`, those internal IoT services are disabled, and the user application
+     *   is responsible for any external networking behavior it needs.
+     *
+     * @param eq_configs Optional startup configuration (MQTT broker, device identity, Wi-Fi defaults,
+     *                   static IP settings, feature flags such as relay sequencer, discovery, etc.).
+     *                   If omitted, defaults from the struct are used.
+     * @param verboseEnabled Enable verbose debug logs printed to Serial.
+     *
+     * @note
+     * - Create only one `EQSP32` instance in your program and reuse it. Multiple instances can conflict
+     *   due to shared hardware resources and background tasks.
+     * - Call `initStatus()` if you have other tasks that might run concurrently and need to gate logic
+     *   until initialization has finished.
+     *
      * @example
-     * Usage example:
+     * @code
+     * #include <EQSP32.h>
+     *
      * EQSP32 eqsp32;
-     * eqsp32.begin();
+     *
+     * void setup() {
+     *   EQSP32Configs cfg;
+     *   cfg.devSystemID = "SYSTEM_ID";
+     *   cfg.userDevName = "Device Name";
+     *   cfg.mqttBrokerIp = "homeassistant.local";
+     *   cfg.mqttBrokerPort = 1883;
+     *   cfg.mqttDiscovery = true;
+     *   cfg.relaySequencer = true;
+     *
+     *   // Optional Wi-Fi defaults (can also be provisioned via EQConnect)
+     *   cfg.wifiSSID = "YourSSID";
+     *   cfg.wifiPassword = "YourPassword";
+     *
+     *   eqsp32.begin(cfg, true);   // true enables verbose logs
+     * }
+     *
+     * void loop() {
+     *   // Your application logic
+     * }
+     * @endcode
      */
     void begin(EQSP32Configs eq_configs = {}, bool verboseEnabled = false);
+
+    /**
+     * @brief Initializes the EQSP32 core (convenience overload).
+     *
+     * Equivalent to calling `begin(EQSP32Configs{}, verboseEnabled)`.
+     *
+     * @param verboseEnabled Enable verbose debug logs printed to Serial.
+     */
     void begin(bool verboseEnabled);
+
+    /**
+     * @brief Retrieves the current initialization status of the EQSP32 core.
+     *
+     * This function reports the state of the internal EQSP32 startup sequence
+     * that begins when `begin()` is called.
+     *
+     * Before `begin()` is invoked, this function always returns `INIT_NOT_STARTED`.
+     * While `begin()` is actively executing, the state becomes `INIT_STARTED`,
+     * which is only observable if queried from another task running concurrently.
+     * Once `begin()` exits, the state transitions to either `INIT_OK` or
+     * `INIT_ERROR`.
+     *
+     * In typical applications, all user logic and tasks are started after
+     * `eqsp32.begin()` completes. In these cases, only `INIT_NOT_STARTED`
+     * (before `begin()`) and `INIT_OK` (after `begin()`) will normally be seen.
+     * The `INIT_STARTED` state exists primarily for advanced use cases where
+     * other tasks need to monitor EQSP32 initialization asynchronously.
+     *
+     * Returned values:
+     * - `INIT_NOT_STARTED`: `begin()` has not been called yet.
+     * - `INIT_STARTED`: Initialization is currently in progress.
+     * - `INIT_OK`: Initialization completed successfully; the EQSP32 core is ready.
+     * - `INIT_ERROR`: Initialization finished but one or more errors occurred.
+     *
+     * @return The current EQSP32 initialization status as an `EQ_InitStatus` value.
+     *
+     * @note
+     * - This function is non-blocking and may be called repeatedly.
+     * - It is recommended to start user logic and additional tasks only after
+     *   `eqsp32.begin()` has completed.
+     */
+    EQ_InitStatus initStatus();
 
 
     // Only for self-testing, NOT to be used by the user
@@ -402,31 +525,7 @@ public:
 
 
     /**
-     * @brief Checks if a given pin identifier corresponds to a local pin on the EQSP32 module.
-     * 
-     * This function determines whether a given pin identifier (idMaskCode) corresponds to a local pin on the EQSP32 module.
-     * A local pin refers to a pin on the EQSP32 module itself based on its mode (master, slave 1, etc).
-     * 
-     * For example, if the EQSP32 module is set to slave mode with ID 1, then SLAVE_1(pin) is local. If the EQSP32 module 
-     * is in slave mode with ID 2 or in master mode, then SLAVE_1(pin) would return false.
-     * 
-     * @param idMaskCode The pin identifier mask code to check.
-     * 
-     * @return Returns true if the pin identifier corresponds to a local pin on the EQSP32 module, otherwise returns false.
-     * 
-     * @example
-     * Usage example:
-     * 
-     * @code
-     * EQSP32 eqsp32;
-     * uint32_t pinCode = SLAVE_1(EQ_PIN_3); // Example pin code
-     * bool isLocal = eqsp32.isLocalPin(pinCode);
-     * if (isLocal) {
-     *     Serial.println("The pin is local to the EQSP32 module.");
-     * } else {
-     *     Serial.println("The pin is not local to the EQSP32 module.");
-     * }
-     * @endcode
+     * @brief DEPRECATED
      */
     bool isLocalPin(uint32_t idMaskCode);
 
@@ -520,7 +619,6 @@ public:
      * 
      * - Digital Input (DIN): Configures the pin as a standard digital input.
      * - Analog Input (AIN): Configures the pin as an analog input for pins 1-8.
-     * - Pseudo-Analog Output (AOUT): Configures the pin as an Pseudo-Analog output for pins 9-16. You can specify the PWM frequency using the 'freq' parameter. The duty will be set using the 'pinValue' function.
      * - Power PWM Output (POUT): Configures the pin as a power PWM output. The duty will be set using the 'pinValue' function.
      *      //Special Modes
      * - Switch (SWT): Configures the pin as a special digital input mode with debouncing timer.
@@ -532,14 +630,14 @@ public:
      * 
      * @param pinIndex The index of the pin to set the mode for (1 to 16).
      * Master/Slave and Expansion module masks are handled automatically.
-     * @param mode The mode to set for the pin. Available options are DIN, DOUT, AIN, AOUT, POUT, SWT, TIN, RELAY.
-     * @param freq The PWM frequency to use for analog output (AOUT) mode. Ignored for other modes. Default is 500 Hz.
+     * @param mode The mode to set for the pin. Available options are DIN, AIN, POUT, SWT, TIN, RELAY.
+     * @param freq N/A (DEPRECATED) Previously: "The PWM frequency to use for analog output (AOUT) mode. Ignored for other modes. Default is 500 Hz."
      * 
      * @return true if the configuration is successful, false otherwise.
      * 
      * @example
      * Usage example:
-     * bool success = EQSP32::pinMode(3, DOUT); // Configures pin 3 as a digital output
+     * bool success = EQSP32::pinMode(3, AIN); // Configures pin 3 as a analog input
      */
     bool pinMode(int pinIndex, EQ_PinMode mode, int freq = 500);
 
@@ -553,7 +651,7 @@ public:
      * @param pinIndex The index of the pin to read the mode from (1 to 16).
      * 
      * @return The current mode of the specified pin. It returns one of the following EQ_PinMode values: 
-     * `DIN`, `DOUT`, `AIN`, `AOUT`, `POUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `NO_MODE`.
+     * `DIN`, `AIN`, `POUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `NO_MODE`.
      * 
      * @example
      * Usage example:
@@ -590,8 +688,6 @@ public:
      * while pins 9-16 support pseudo-analog output (Push-Pull PWM).
      * The pin mode will be set using the 'pinMode' function.
      * 
-     * - Digital Output (DOUT): Used for standard digital output operations.
-     * - Pseudo-Analog Output (AOUT): Supports pseudo-analog output for pins 9-16. The value should range from 0 to 1000, corresponding to 0% to 100% duty cycle.
      * - Power PWM Output (POUT): Generates pull-down power PWM output. The value should range from 0 to 1000, corresponding to 0% to 100% duty cycle.
      * - Relay (RELAY): Special POUT mode, starts with set power, and after a set time drops to holding power. Needs to be set to 0 before restarting the start-hold power cycle.
      * 
@@ -622,7 +718,7 @@ public:
      * 
      * @return The pin value based on the EQ_PinMode. For AIN, it returns the analog value in mV. For TIN, it returns the temperature in Celsius * 10.
      * For other input type PinModes, it returns 1 if the pin state is HIGH, and 0 if the pin state is LOW. Returns -1 if the pin index is invalid.
-     * For output type PinModes, it returns the user set pinValue. Ex. if eqsp32.pinValue(2, 500), eqsp32.readPin(2) will return 500 (assuming it is set in one of the oupute modes).
+     * For output type PinModes, it returns the user set pinValue. Ex. if eqsp32.pinValue(2, 500), eqsp32.readPin(2) will return 500 (assuming it is set in one of the output modes).
      * 
      * @attention The trigger mode is applicable only to digital pins. For analog and temperature pins, the trigger mode is ignored.
      * For TIN pins, the temperature calculation assumes the EQ's 5V is used as reference.
@@ -647,7 +743,7 @@ public:
      * @brief Configures the PWM frequency for the Power PWM Output (POUT) mode on the EQSP32.
      * 
      * This function allows you to set the PWM frequency for the Power PWM Output (POUT) mode and all special POUT modes.
-     * A change on power PWM frequency will affect all pins configured in POUT mode or any speial POUT mode.
+     * A change on power PWM frequency will affect all pins configured in POUT mode or any special POUT mode.
      * The PWM frequency determines the rate at which the power is pulsed.
      * The valid frequency range is between 50 Hz and 3000 Hz.
      * The default frequency is set to 1000 Hz after EQ is initialized.
@@ -662,7 +758,7 @@ public:
      * 
      * @param freq The PWM frequency to set for the Power PWM Output (POUT) mode. By default the frequency is set to 1000 Hz.
      * 
-     * @return true if the configuration is successful, false otherwise. Returns false if the provided frequency is outside the valid range (50 Hz to 1500 Hz).
+     * @return true if the configuration is successful, false otherwise. Returns false if the provided frequency is outside the valid range (50 Hz to 3000 Hz).
      * 
      * @note The frequency range of the power PWM output is within audible range.
      * 
@@ -720,7 +816,7 @@ public:
      * In RELAY mode, the pin operates as a special Power PWM Output (POUT) mode designed for relay control.
      * You can set the hold value and derate delay using the 'holdValue' and 'derateDelay' parameters, respectively.
      * When operating in RELAY mode, the initial power is set by 'pinValue' function and when the configured derateDelay
-     * has passed, the power will automatically drop to the specified holValue.
+     * has passed, the power will automatically drop to the specified holdValue.
      * 
      * @param pinIndex The index of the pin to configure for Relay (RELAY) mode (1 to 16).
      * @param holdValue The hold value for relay control. This is the power level to maintain after the derate delay. Default is 500 meaning 50% of max power.
@@ -947,7 +1043,7 @@ public:
      * This function measures and returns the current output voltage level being provided by the EQSP32 module. 
      * The returned value is in millivolts (mV). This measurement is essential for monitoring the output power 
      * status and ensuring that the module is delivering the correct voltage to connected devices or systems.
-     * The 5V output is also used as referenece voltage for TIN mode.
+     * The 5V output is also used as reference voltage for TIN mode.
      * 
      * @return The output voltage level being provided by the EQSP32 module, measured in millivolts (mV).
      * 
@@ -956,6 +1052,51 @@ public:
      * int outputVoltage = eqsp32.readOutputVoltage();
      */
     int readOutputVoltage();
+
+    /**
+     * @brief Reads the state of the onboard user button (BOOT).
+     * 
+     * This function returns the current state of the EQSP32 onboard user (BOOT) button.
+     * The button serves dual purposes depending on whether the EQSP32 IoT core
+     * is enabled or disabled.
+     * 
+     *Behavior when EQSP32 IoT core is ENABLED (`disableErqosIoT = false`)
+     * - A short press or tap enables BLE advertising, allowing discovery and
+     *   configuration via the EQConnect application.
+     * - A long press (press duration ≥ 3 seconds) resets all network-related
+     *   parameters to factory defaults, including:
+     *   - Wi-Fi SSID and password
+     *   - MQTT discovery configuration
+     *   - IP configuration (static IP, gateway, subnet, DNS)
+     * 
+     * These system-level actions are handled internally by the EQSP32 core.
+     * The user application may still read the button state, but the button
+     * is actively used by the system.
+     * 
+     *Behavior when EQSP32 IoT core is DISABLED (`disableErqosIoT = true`)
+     * - The EQSP32 core does not assign any system functionality to the button.
+     * - The button state is fully available to the user application.
+     * - The button may be freely used for custom logic such as triggering modes,
+     *   diagnostics, safety actions, or visual indicators.
+     * 
+     * Additional notes:
+     * - The function is non-blocking.
+     * - The returned state reflects the instantaneous button condition.
+     * - Debouncing, press-duration tracking, or edge detection must be handled
+     *   by the user in application code if required.
+     * 
+     * @return true if the user button is currently pressed, false otherwise.
+     * 
+     * @example
+     * Usage example:
+     * 
+     * @code
+     * if (eqsp32.readUserButton()) {
+     *     Serial.println("User button pressed");
+     * }
+     * @endcode
+     */
+    bool readUserButton();
 
 
         // RS232/RS485 serial communication
@@ -975,7 +1116,7 @@ public:
      * @return true if the configuration is successful and the mode is valid, false otherwise.
      * 
      * @attention If no value is provided for baud, it is assumed to be 115200. So if it is needed to use for example RS485
-     *          in transmit at 9600 and then switch to receive 9600, at both times 9600 should be set in cofigSerial()
+     *          in transmit at 9600 and then switch to receive 9600, at both times 9600 should be set in configSerial()
      * 
      * @example
      * Usage example:
@@ -1025,7 +1166,7 @@ public:
      * 
      * @note Broadcast messages like NMT (0x000) or SYNC (0x080) are NOT received,
      * since they use Node ID 0 and are outside this filter.
-     * For accepting broadcast messages like NMT, configCAN() should be used to accept ALL IDs and implement software fitlering
+     * For accepting broadcast messages like NMT, configCAN() should be used to accept ALL IDs and implement software filtering
      * for function codes, NMT (0x000), SYNC (0x080), etc.
      * 
      * This filter always runs in normal mode (for loopback testing use configCAN()).
@@ -2000,97 +2141,42 @@ private:
  *      {These entities will read/write MQTT topics which may be used in other integration like Node-RED}
  * 
  */
-// Overloads for when developing for HA only
-void createControl_Switch(std::string name, std::string iconType_HA = "");
-void createControl_Value(std::string name, int minValue = 0, int maxValue = 1000, int decimals = 0, std::string iconType_HA = "");
+        //  ------------------------
+        //      Control entities
+        //  ------------------------
+void createControl_Switch(std::string entityName, std::string iconType_HA = "");
+void createControl_Value(std::string entityName, int minValue = 0, int maxValue = 1000, int decimals = 0, std::string iconType_HA = "");
 
-bool readControl_Switch(const std::string& name);
-float readControl_Value(const std::string& name);
+bool readControl_Switch(const std::string& entityName);
+float readControl_Value(const std::string& entityName);
 
-bool updateControl_Switch(const std::string& name, bool value);
-bool updateControl_Value(const std::string& name, float value);
+bool updateControl_Switch(const std::string& entityName, bool value);
+bool updateControl_Value(const std::string& entityName, float value);
 
-// Overloads for when developing for HA only
+
+        //  ------------------------
+        //      Monitoring entities
+        //  ------------------------
 // binSensorType_HA (which could be omitted) could be one of the binary sensor types listed at https://www.home-assistant.io/integrations/binary_sensor/
-void createDisplay_BinarySensor(std::string name, std::string iconType_HA = "", std::string binSensorType_HA = "");
+void createDisplay_BinarySensor(std::string entityName, std::string iconType_HA = "", std::string binSensorType_HA = "");
 // sensorType_HA (which could be omitted) could be one of the sensor types listed at https://www.home-assistant.io/integrations/sensor/
-void createDisplay_Sensor(std::string name, int decimals = 0, std::string unit = "", std::string iconType_HA = "", std::string sensorType_HA = "");
+void createDisplay_Sensor(std::string entityName, int decimals = 0, std::string unit = "", std::string iconType_HA = "", std::string sensorType_HA = "");
 
-bool readDisplay_BinarySensor(const std::string& name);
-float readDisplay_Sensor(const std::string& name);
+bool readDisplay_BinarySensor(const std::string& entityName);
+float readDisplay_Sensor(const std::string& entityName);
 
-bool updateDisplay_BinarySensor(const std::string& name, bool value);
-bool updateDisplay_Sensor(const std::string& name, float value);
+bool updateDisplay_BinarySensor(const std::string& entityName, bool value);
+bool updateDisplay_Sensor(const std::string& entityName, float value);
 
+        //  ------------------------------------------------------------------------
+        //      Global MQTT topics (Plain MQTT topics. No UID used for these.)
+        //  ------------------------------------------------------------------------
+void createGlobal_Topic(const String& topic);               // Global topic registration
 
+String readGlobal_Topic(const String& topicName);           // Read raw received topic payload as String
+bool   readGlobal_TopicBOOL(const String& topicName);       // Auto conversion to true/false
+float  readGlobal_TopicFLOAT(const String& topicName);      // Will try to convert the value to float
 
-// Supported icons for `iconType` parameter (Beta EQ IoT app)
-#define WATER_ICON          "water"
-#define FIRE_ICON           "fire"
-#define AIR_ICON            "air"
-#define BUBBLES_ICON        "bubbles"
-#define BATTERY_ICON        "battery"
-#define MULTIMETER_ICON     "multimeter"
-#define CALENDAR_ICON       "calendar"
-#define PUMP_ICON           "pump"
-#define SPRINKLER_ICON      "sprinkler"
-#define FIRE_SPRINKLER_ICON "fire_sprinkler"
-#define IRRIGATION_ICON     "irrigation"
-#define DOOR_ICON           "door"
-#define GARAGE_DOOR_ICON    "garage_door"
-#define WINDOW_ICON         "window"
-#define SHUTTER_ICON        "shutter"
-#define SPEED_ICON          "speed"
-#define DISTANCE_ICON       "distance"
-#define ANGLE_ICON          "angle"
-#define FORCE_ICON          "force"
-#define TORQUE_ICON         "torque"
-#define PRESSURE_ICON       "pressure"
-#define TEMPERATURE_ICON    "temperature"
-#define HUMIDITY_ICON       "humidity"
-#define LIGHT_ICON          "light"
-#define SOUND_ICON          "sound"
-#define AIR_QUALITY_ICON    "air_quality"
-#define ELECTRICAL_MEASUREMENTS_ICON    "electrical_measurements"
-#define TIME_ICON           "time"
-#define DURATION_ICON       "duration"
-#define PH_ICON             "ph"
-#define CO2_ICON            "co2"
-
-
-/**
- * 
- *      Control entities (Same as configuration entities for Home Assistant) (Beta EQ IoT app)
- * 
- */
-void createControl_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
-void createControl_Value(std::string name, std::string accessLevel, std::string iconType, int minValue, int maxValue, int decimals, std::string unit, std::string iconType_HA = "");
-
-
-/**
- * 
- *      Display entities (Beta EQ IoT app)
- * 
- */
-void createDisplay_BinarySensor(std::string name, std::string accessLevel, std::string iconType, std::string onType, std::string iconType_HA = "", std::string binSensorType_HA = "");
-void createDisplay_Sensor(std::string name, std::string accessLevel, std::string iconType, int decimals, std::string unit, std::string iconType_HA = "", std::string sensorType_HA = "");
-
-
-/**
- * 
- *      Configuration entities (Same as control entities for Home Assistant) (Beta EQ IoT app)
- * 
- */
-void createConfig_Switch(std::string name, std::string accessLevel, std::string iconType, std::string iconType_HA = "");
-void createConfig_Value(std::string name, std::string accessLevel, std::string iconType, int minValue, int maxValue, int decimals, std::string unit, std::string iconType_HA = "");
-// Overloads for when developing for HA only
-void createConfig_Switch(std::string name, std::string iconType_HA = "");
-void createConfig_Value(std::string name, int minValue, int maxValue, int decimals, std::string iconType_HA = "");
-
-bool readConfig_Switch(const std::string& name);
-float readConfig_Value(const std::string& name);
-
-bool updateConfig_Switch(const std::string& name, bool value);
-bool updateConfig_Value(const std::string& name, float value);
+bool updateGlobal_Topic(const String& topicName, const String& payload, bool retain = false);
 
 #endif
