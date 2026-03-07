@@ -23,6 +23,7 @@
 
 #define TINY_GSM_MODEM_SIM800
 
+#define EQ_USER_SPI     FSPI        // Do not use HSPI, as it is reserved for internal use
 
 /**
  *      EQSP32 Main unit pin codes
@@ -1375,24 +1376,41 @@ public:
 
 
     /**
-     * @brief Retrieves the unique device ID assigned by the system.
+     * @brief Retrieves the generated Device ID used by the system.
      * 
-     * This function returns a persistent, globally unique identifier for the EQSP32 device,
-     * formatted as `EQSP32_XXXXXX`, where `XXXXXX` represents the last 3 bytes of the MAC address
-     * in uppercase hexadecimal format (e.g., `EQSP32_A1B2C3`).
+     * This function returns the current Device ID used internally for
+     * MQTT topic generation and system identification.
      * 
-     * This ID is automatically generated and cannot be changed by the user. It is guaranteed
-     * to remain constant across reboots.
-     * It may be used by the developer as a unique identifier and
-     * it is internally used in the MQTT topic generation structure.
+     * The Device ID is generated automatically using the device name
+     * configured via EQConnect and follows this format:
      * 
-     * @return The system-generated unique device ID as an Arduino `String`.
+     *     EQ_{sanitized_device_name}
+     * 
+     * Where:
+     * - The prefix "EQ_" is added automatically.
+     * - Spaces in the device name are replaced with underscores (_).
+     * - Special characters are removed.
+     * 
+     * Example:
+     * If the configured device name is:
+     *     My EQSP32!
+     * 
+     * The generated Device ID becomes:
+     *     EQ_My_EQSP32
+     * 
+     * The Device ID is persistent across reboots but will change
+     * if the device name is modified in EQConnect.
+     * 
+     * This ID is internally used in MQTT topic generation and may
+     * also be used by developers for external integrations.
+     * 
+     * @return The generated Device ID as an Arduino `String`.
      * 
      * @example
      * EQSP32 eqsp32;
      * String id = eqsp32.getDeviceID();
      * Serial.print("Device ID: ");
-     * Serial.println(id); // Output: EQSP32_A1B2C3 if device WiFi MAC ends in A1B2C3
+     * Serial.println(id); // Example output: EQ_My_EQSP32
      */
     String getDeviceID();
 
