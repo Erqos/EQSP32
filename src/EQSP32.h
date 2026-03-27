@@ -21,9 +21,24 @@
 #endif
 
 
-#define TINY_GSM_MODEM_SIM800
+#define TINY_GSM_MODEM_SIM800       // Defined the modem type used for EQX2G (SIM800)
 
 #define EQ_USER_SPI     FSPI        // Do not use HSPI, as it is reserved for internal use
+
+
+// --- EQX2G - UART Bridge
+extern Stream& eqx2gStream;         // Use this directly to send serial messages to the EQX2G module, or attach it to a GSM library, like TinyGsm in <TinyGsmClient.h>
+#define eqx2gSerial   eqx2gStream   // Use eqx2gStream or eqx2gSerial, it is the same
+
+
+// --- BLE NUS - Nordic UART Service (reference) -----------------------------
+// Service: 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
+// RX (Central->EQSP32, Write/WriteNR): 6E400002-B5A3-F393-E0A9-E50E24DCCA9E
+// TX (EQSP32->Central, Notify):       6E400003-B5A3-F393-E0A9-E50E24DCCA9E
+// MTU: default 23 (not changed) => max payload 20 bytes per write/notify.
+// ---------------------------------------------------------------------------
+extern Stream& bleStream;           // It allows for Serial like communication over BLE (Nordic UART Service {NUS})
+#define bleSerial   bleStream       // Use bleStream or bleSerial, it is the same
 
 /**
  *      EQSP32 Main unit pin codes
@@ -71,7 +86,6 @@
 /**
  *      EQX - EQSP32 Expansion module pin codes and channels
  */
-extern Stream& eqx2gStream;
 
 // ==========================
 // EQXTC - Thermocouple Module
@@ -281,6 +295,21 @@ enum EQ_EthernetStatus : uint8_t {
     EQ_ETH_STOPPED
 };
 
+enum EQ_MQTTBrokerStatus : uint8_t {
+    EQ_MQTT_DISCONNECTED  = 0,   // No connection with broker, not trying
+    EQ_MQTT_CONNECTED,           // Connected on MQTT broker
+    EQ_MQTT_CONNECTING,          // No connection with broker, system is trying to connect
+    EQ_MQTT_NO_INIT = 0xFF       // MQTT has not been setup
+};
+
+enum EQ_BleStatus : uint8_t {
+    EQ_BLE_DISCONNECTED = 0,   // BLE initialized, NOT connected, and NOT advertising
+    EQ_BLE_CONNECTED,          // BLE client connected, but NO active notification subscription
+    EQ_BLE_ADVERTISING,        // BLE advertising and discoverable
+    EQ_BLE_SUBSCRIBED,         // BLE client connected and subscribed to notifications
+    EQ_BLE_NO_INIT = 0xFF      // BLE NOT initialized or NOT managed by EQSP32 library
+};
+
 enum EQ_WeekDay : uint8_t {
     EQ_SUNDAY = 0,
     EQ_MONDAY,    // 1
@@ -331,6 +360,7 @@ typedef struct
     bool mqttDiscovery = false;
     bool disableErqosIoT = false;
     bool disableNetSwitching = false;
+    bool disableSystemMQTTEntities = false; // (Optional) Set to true to disable the automatic publication and update of system entities (In/Out supply voltages, heartbeat, uptime, signal strength); any of these may be implemented in the developer's code
     int bleBroadcastingMins = 3;        // Only if disableErqosIoT == false. BLE will broadcast for these many mins before turning off (setting to 0 makes BLE always available). If BLE turns off, pressing the BOOT button or webserver access is needed to reenable it.
 } EQSP32Configs;
 
@@ -927,6 +957,7 @@ public:
      * eqsp32.setBleLed();  // Manually turns on the BLE LED
      */
     bool setBleLed();
+    #define setBLELed()     setBleLed()
 
 
     /**
@@ -946,6 +977,7 @@ public:
      * eqsp32.resetBleLed();  // Manually turns off the BLE LED
      */
     bool resetBleLed();
+    #define resetBLELed()    resetBleLed()
 
 
     /**
@@ -964,6 +996,7 @@ public:
      * eqsp32.toggleBleLed();  // Inverts BLE LED state (ON → OFF or OFF → ON)
      */
     bool toggleBleLed();
+    #define toggleBLELed()    toggleBleLed()
 
 
     /**
@@ -983,6 +1016,8 @@ public:
      * eqsp32.setWifiLed();  // Manually turns on the Wi-Fi LED
      */
     bool setWifiLed();
+    #define setWiFiLed()    setWifiLed()
+    #define setWIFILed()    setWifiLed()
 
 
     /**
@@ -1002,6 +1037,8 @@ public:
      * eqsp32.resetWifiLed();  // Manually turns off the Wi-Fi LED
      */
     bool resetWifiLed();
+    #define resetWiFiLed()      resetWifiLed()
+    #define resetWIFILed()      resetWifiLed()
 
 
     /**
@@ -1020,6 +1057,8 @@ public:
      * eqsp32.toggleWifiLed();  // Inverts Wi-Fi LED state (ON → OFF or OFF → ON)
      */
     bool toggleWifiLed();
+    #define toggleWiFiLed()    toggleWifiLed()
+    #define toggleWIFILed()    toggleWifiLed()
 
 
         // Power sensing
@@ -1284,6 +1323,292 @@ public:
      */
     EQ_EthernetStatus getEthernetStatus();
 
+    /**
+     * @brief Retrieves the current MQTT broker connection status of the EQSP32 module.
+     *
+     * This function returns the current MQTT status of the EQSP32, indicating whether the device is connected
+     * to an MQTT broker, currently attempting to connect, disconnected (and not trying), or if MQTT has not been
+     * initialized/configured yet. The returned value corresponds to the `EQ_MQTTBrokerStatus` enum.
+     *
+     * The possible return values are:
+     * - EQ_MQTT_DISCONNECTED (0): No connection with broker, not trying.
+     * - EQ_MQTT_CONNECTED (1): Connected to the MQTT broker.
+     * - EQ_MQTT_CONNECTING (2): Not connected yet; the system is currently trying to connect.
+     * - EQ_MQTT_NO_INIT (0xFF): MQTT has not been initialized or setup.
+     *
+     * @return The current MQTT broker status as an `EQ_MQTTBrokerStatus` enum.
+     *
+     * @example
+     * EQSP32 eqsp32;
+     * EQ_MQTTBrokerStatus mqttStatus = eqsp32.getMQTTStatus();
+     * if (mqttStatus == EQ_MQTT_CONNECTED) {
+     *     Serial.println("MQTT is connected.");
+     * } else if (mqttStatus == EQ_MQTT_CONNECTING) {
+     *     Serial.println("MQTT is connecting...");
+     * } else if (mqttStatus == EQ_MQTT_NO_INIT) {
+     *     Serial.println("MQTT not initialized.");
+     * } else {
+     *     Serial.println("MQTT disconnected.");
+     * }
+     */
+    EQ_MQTTBrokerStatus getMQTTStatus();
+
+    /**
+     * @brief Retrieves the current Bluetooth Low Energy (BLE) status of the EQSP32 module.
+     * 
+     * This function returns the current BLE state of the EQSP32, indicating whether the BLE
+     * subsystem is advertising, connected to a client, subscribed to notifications, or
+     * not initialized. The returned value corresponds to the `EQ_BleStatus` enum.
+     * 
+     * The possible return values are:
+     * - EQ_BLE_DISCONNECTED (0): BLE is initialized but not connected and not advertising.
+     * - EQ_BLE_CONNECTED (1): BLE is connected to a client, but no active notification
+     *   subscriptions are present.
+     * - EQ_BLE_ADVERTISING (2): BLE is advertising and discoverable by nearby BLE devices.
+     * - EQ_BLE_SUBSCRIBED (3): BLE is connected to a client and the client has subscribed
+     *   to notification streams.
+     * - EQ_BLE_NO_INIT (255): BLE has not been initialized or is not managed by the EQSP32
+     *   library (for example when Erqos IoT services are disabled).
+     * 
+     * @return The current BLE status as an `EQ_BleStatus` enum.
+     * 
+     * @example
+     * EQ_BleStatus bleStatus = eqsp32.getBleStatus();
+     * 
+     * if (bleStatus == EQ_BLE_ADVERTISING) {
+     *     Serial.println("BLE advertising and ready for connection.");
+     * } else if (bleStatus == EQ_BLE_CONNECTED) {
+     *     Serial.println("BLE client connected.");
+     * } else if (bleStatus == EQ_BLE_SUBSCRIBED) {
+     *     Serial.println("BLE notifications active.");
+     * } else if (bleStatus == EQ_BLE_DISCONNECTED) {
+     *     Serial.println("BLE initialized but not connected.");
+     * } else if (bleStatus == EQ_BLE_NO_INIT) {
+     *     Serial.println("BLE not initialized.");
+     * }
+     */
+    EQ_BleStatus getBleStatus();
+
+
+    // WiFi control
+    /**
+     * @brief Enables Wi-Fi connectivity on the EQSP32.
+     * 
+     * This function attempts to start Wi-Fi and connect the EQSP32 to a wireless
+     * network.
+     * 
+     * This function is intended for use when Erqos IoT handling is enabled,
+     * allowing the application to control Wi-Fi while the EQSP32 library
+     * manages the connection workflow internally.
+     * 
+     * If Erqos IoT handling is disabled and custom Wi-Fi management is used
+     * instead, this function is not used and always returns `false`.
+     * 
+     * If `newSSID` and `newPASS` are left empty, the function tries to connect
+     * using the Wi-Fi credentials currently stored in flash memory, if available.
+     * 
+     * If `newSSID` and `newPASS` are provided, they overwrite any previously
+     * stored Wi-Fi credentials and the EQSP32 attempts to connect using the new
+     * values.
+     * 
+     * The function returns `false` if Wi-Fi cannot begin a connection attempt,
+     * such as when no valid credentials are available or another condition is
+     * preventing Wi-Fi startup.
+     * 
+     * @param newSSID Optional new Wi-Fi SSID to use and store. If left empty,
+     *                the EQSP32 uses the saved SSID & password from flash memory.
+     * @param newPASS Optional new Wi-Fi password to use and store. If left empty,
+     *                the EQSP32 uses the saved SSID & password from flash memory.
+     * 
+     * @return `true` if Wi-Fi was successfully allowed to start and is attempting
+     *         to connect, `false` if Wi-Fi could not begin the connection process.
+     * 
+     * @example
+     * if (eqsp32.startWiFi()) {
+     *     Serial.println("Wi-Fi is starting with saved credentials.");
+     * } else {
+     *     Serial.println("Wi-Fi could not start.");
+     * }
+     * 
+     * @example
+     * if (eqsp32.startWiFi("MySSID", "MyPassword")) {
+     *     Serial.println("Wi-Fi is starting with new credentials.");
+     * } else {
+     *     Serial.println("Wi-Fi could not start with the provided credentials.");
+     * }
+     */
+    bool startWiFi(String newSSID = "", String newPASS = "");
+    #define startWIFI() startWiFi()
+
+    /**
+     * @brief Disables Wi-Fi connectivity on the EQSP32.
+     * 
+     * This function attempts to stop Wi-Fi and disconnect the EQSP32 from the
+     * currently active wireless network.
+     * 
+     * This function is intended for use when Erqos IoT handling is enabled,
+     * allowing the application to control Wi-Fi while the EQSP32 library
+     * manages the connection workflow internally.
+     * 
+     * If Erqos IoT handling is disabled and custom Wi-Fi management is used
+     * instead, this function is not used and always returns `false`.
+     * 
+     * If Wi-Fi is currently active, the function attempts to disconnect it and
+     * stop the Wi-Fi interface.
+     * 
+     * @return `true` if Wi-Fi was successfully disconnected and stopped,
+     *         `false` if Wi-Fi was not active or could not be stopped.
+     * 
+     * @example
+     * if (eqsp32.stopWiFi()) {
+     *     Serial.println("Wi-Fi stopped successfully.");
+     * } else {
+     *     Serial.println("Wi-Fi was not active or could not be stopped.");
+     * }
+     */
+    bool stopWiFi();
+    #define stopWIFI() stopWiFi()
+
+    /**
+     * @brief Clears the stored Wi-Fi credentials on the EQSP32.
+     * 
+     * This function deletes the Wi-Fi credentials currently stored in flash
+     * memory.
+     * 
+     * This function is intended for use when Erqos IoT handling is enabled,
+     * allowing the application to control Wi-Fi while the EQSP32 library
+     * manages the connection workflow internally.
+     * 
+     * If Erqos IoT handling is disabled and custom Wi-Fi management is used
+     * instead, this function is not used and always returns `false`.
+     * 
+     * Clearing Wi-Fi credentials automatically stops Wi-Fi and disconnects the
+     * EQSP32 from the current wireless network, if Wi-Fi is active.
+     * 
+     * After clearing the stored credentials, the EQSP32 resets the Wi-Fi
+     * credentials to the default values defined in `EQSP32Configs`, which may
+     * be empty if no developer defaults were provided.
+     * 
+     * @return `true` if the stored Wi-Fi credentials were successfully cleared,
+     *         `false` if the credentials could not be cleared.
+     * 
+     * @example
+     * if (eqsp32.clearWiFi()) {
+     *     Serial.println("Wi-Fi credentials cleared.");
+     * } else {
+     *     Serial.println("Wi-Fi credentials could not be cleared.");
+     * }
+     */
+    bool clearWiFi();
+    #define clearWIFI() clearWiFi()
+
+
+    // BLE control
+    /**
+     * @brief Enables Bluetooth Low Energy (BLE) advertising on the EQSP32.
+     * 
+     * This function enables BLE advertising, allowing nearby BLE clients
+     * (such as the EQConnect mobile application) to discover and connect
+     * to the EQSP32.
+     * 
+     * If BLE is already advertising, connected, or has an active client
+     * subscription, the function does not restart advertising and returns `false`.
+     * 
+     * @return `true` if BLE was ready and successfully started advertising,
+     *         `false` if BLE was already advertising, connected, subscribed,
+     *         or could not start advertising.
+     * 
+     * @example
+     * if (eqsp32.startBle()) {
+     *     Serial.println("BLE started and advertising.");
+     * } else {
+     *     Serial.println("BLE was already active or failed to start.");
+     * }
+     */
+    bool startBle();
+    #define startBLE() startBle()
+
+
+    /**
+     * @brief Stops Bluetooth Low Energy (BLE) advertising on the EQSP32.
+     * 
+     * This function stops BLE advertising and makes the EQSP32 no longer
+     * discoverable over BLE.
+     * 
+     * For advertising to stop successfully, BLE must currently be in the
+     * `EQ_BLE_ADVERTISING` state. If there is an active BLE connection or
+     * an active client subscription, the function returns `false` and BLE
+     * remains active.
+     * 
+     * After stopping BLE advertising, the BLE status transitions from
+     * `EQ_BLE_ADVERTISING` to `EQ_BLE_DISCONNECTED`.
+     * 
+     * @return `true` if BLE advertising was successfully stopped,
+     *         `false` if BLE was not advertising, was not initialized,
+     *         had an active connection/subscription, or could not be stopped.
+     * 
+     * @example
+     * if (eqsp32.stopBle()) {
+     *     Serial.println("BLE advertising stopped.");
+     * } else {
+     *     Serial.println("BLE was not advertising or could not be stopped.");
+     * }
+     */
+    bool stopBle();
+    #define stopBLE() stopBle()
+
+    /**
+     * @brief Updates MQTT credentials and enable/disable behavior, persisting settings to flash.
+     *
+     * This function updates the MQTT broker authentication credentials (username/password) and the MQTT enabled
+     * state, and stores them in flash memory. The stored values are automatically applied after reset and will be
+     * used for subsequent MQTT connection attempts.
+     *
+     * Username and password are allowed to be empty strings, to support brokers that do not require authentication.
+     *
+     * @important
+     * - Any values provided for `mqttUserName` and `mqttPassword` will overwrite the currently stored credentials.
+     * - If the developer does not want to overwrite the stored credentials, they must pass the existing credentials.
+     * - If only the enabled state needs to change, use the overloaded function `updateMQTT(bool enableMqtt)`
+     *   to avoid modifying stored credentials.
+     *
+     * The `enableMqtt` flag is also stored in flash and applied after reset. When enabled, the EQSP32 will attempt
+     * to connect to the configured MQTT broker. When disabled, the EQSP32 will ignore MQTT and will not attempt
+     * connections.
+     *
+     * @param mqttUserName MQTT username to store (may be empty).
+     * @param mqttPassword MQTT password to store (may be empty).
+     * @param enableMqtt   Enables or disables MQTT auto-connection behavior (persisted to flash).
+     *
+     * @example
+     * // Enable MQTT with credentials:
+     * eqsp32.updateMQTT("user", "pass", true);
+     *
+     * @example
+     * // Enable MQTT without authentication:
+     * eqsp32.updateMQTT("", "", true);
+     *
+     * @example
+     * // Disable MQTT without changing credentials (preferred):
+     * eqsp32.updateMQTT(false);
+     *
+     * @example
+     * // Keep existing credentials but enable MQTT (pass existing values explicitly):
+     * eqsp32.updateMQTT(existingUser, existingPass, true);
+     */
+    void updateMQTT(String mqttUserName, String mqttPassword, bool enableMqtt);
+
+    /**
+     * @brief Enables or disables MQTT behavior, persisting the setting to flash.
+     *
+     * This overload updates only the MQTT enabled state without modifying stored MQTT credentials.
+     * The `enableMqtt` value is stored in flash and applied after reset. When enabled, the EQSP32 will
+     * attempt MQTT connections; when disabled, it will ignore MQTT and will not attempt to connect.
+     *
+     * @param enableMqtt Enables (`true`) or disables (`false`) MQTT auto-connection behavior (persisted to flash).
+     */
+    void updateMQTT(bool enableMqtt);
+    
 
     /**
      * @brief Returns the current IP address of the EQSP32 device.
@@ -1373,6 +1698,33 @@ public:
      * Serial.println(name);
      */
     String getDeviceName();
+
+    
+    /**
+     * @brief Sets the user-defined device name of the EQSP32.
+     * 
+     * This function validates and applies a new device name for the EQSP32.
+     * 
+     * If the new name is valid, it is saved internally and the required system
+     * updates are triggered, such as persistence to flash memory and refresh of
+     * services that use the device name, for example the OTA host name.
+     * 
+     * If the provided name is the same as the current one, the function returns
+     * `true` without making further changes.
+     * 
+     * @param newDeviceName The new device name to validate and apply.
+     * 
+     * @return `true` if the device name was accepted,
+     *         `false` if the device name was rejected.
+     * 
+     * @example
+     * if (eqsp32.setDeviceName("Boiler Room Controller")) {
+     *     Serial.println("Device name updated.");
+     * } else {
+     *     Serial.println("Invalid device name.");
+     * }
+     */
+    bool setDeviceName(String newDeviceName);
 
 
     /**
@@ -2153,6 +2505,74 @@ private:
     MQTT Device Interfacing Entities for Home Assistant (Node-RED or other MQTT platforms)
      ---   ---   ---   ---   ---   ---   ---   ---
     ***********************************************   */
+
+struct SwitchEntityConfig {
+    const char* entity;     /* "Unnamed" */
+    const char* icon;       /* "" */
+
+    constexpr SwitchEntityConfig(const char* entity_ = "Unnamed",
+                                const char* icon_ = "")
+        : entity(entity_), icon(icon_) {}
+};
+
+struct ValueEntityConfig {
+    const char* entity;     /* "Unnamed" */
+    int32_t min_value;      /* 0*/
+    int32_t max_value;      /* 1000 */
+    uint8_t decimals;       /* 0 */
+    const char* icon;       /* "" */
+
+    constexpr ValueEntityConfig(const char* entity_ = "Unnamed",
+                                int32_t min_value_ = 0,
+                                int32_t max_value_ = 1000,
+                                uint8_t decimals_ = 0,
+                                const char* icon_ = "")
+        : entity(entity_), min_value(min_value_), max_value(max_value_), decimals(decimals_), icon(icon_) {}
+};
+
+struct TextEntityConfig {
+    const char* entity;      /* "Unnamed" */
+    int32_t min_length;      /* 0 */
+    int32_t max_length;      /* 32 */
+    bool hidden_text;        /* false */
+    const char* pattern;     /* "" */
+    const char* icon;        /* "" */
+
+    constexpr TextEntityConfig(const char* entity_ = "Unnamed",
+                               int32_t min_length_ = 0,
+                               int32_t max_length_ = 32,
+                               bool hidden_text_ = false,
+                               const char* pattern_ = "",
+                               const char* icon_ = "")
+        : entity(entity_), min_length(min_length_), max_length(max_length_), hidden_text(hidden_text_), pattern(pattern_), icon(icon_) {}
+};
+
+struct BinarySensorEntityConfig {
+    const char* entity;         /* "Unnamed" */
+    const char* icon;           /* "" */
+    const char* device_class;   /* "" */
+
+    constexpr BinarySensorEntityConfig(const char* entity_ = "Unnamed",
+                                        const char* icon_ = "",
+                                        const char* device_class_ = "")
+        : entity(entity_), icon(icon_), device_class(device_class_) {}
+};
+
+struct SensorEntityConfig {
+    const char* entity;         /* "Unnamed" */
+    int32_t decimals;           /* 0 */
+    const char* unit;           /* "" */
+    const char* icon;           /* "" */
+    const char* device_class;   /* "" */
+
+    constexpr SensorEntityConfig(const char* entity_ = "Unnamed",
+                                int32_t decimals_ = 0,
+                                const char* unit_ = "",
+                                const char* icon_ = "",
+                                const char* device_class_ = "")
+        : entity(entity_), decimals(decimals_), unit(unit_), icon(icon_), device_class(device_class_) {}
+};
+
 /**
  * 
  *      Control and Display entities for Home Assistant integration over MQTT
@@ -2162,19 +2582,30 @@ private:
         //  ------------------------
         //      Control entities
         //  ------------------------
+void createControl_Switches(const SwitchEntityConfig* items, size_t count);
+void createControl_Values(const ValueEntityConfig* items, size_t count);
+void createControl_Texts(const TextEntityConfig* items, size_t count);
+    // Using the above {createControl_Switches() and createControl_Values()} is highly recommended, avoid using the following functions for more than 20 entities
 void createControl_Switch(std::string entityName, std::string iconType_HA = "");
 void createControl_Value(std::string entityName, int minValue = 0, int maxValue = 1000, int decimals = 0, std::string iconType_HA = "");
+// void createControl_Text( ... );      // This is only supported via the TextEntityConfig array method
 
 bool readControl_Switch(const std::string& entityName);
 float readControl_Value(const std::string& entityName);
+String readControl_Text(const std::string& entityName);
 
 bool updateControl_Switch(const std::string& entityName, bool value);
 bool updateControl_Value(const std::string& entityName, float value);
+bool updateControl_Text(const std::string& entityName, String value);
 
 
         //  ------------------------
         //      Monitoring entities
         //  ------------------------
+void createDisplay_BinarySensors(const BinarySensorEntityConfig* items, size_t count);
+void createDisplay_Sensors(const SensorEntityConfig* items, size_t count);
+// Using the above {createDisplay_BinarySensors() and createDisplay_Sensors()} is highly recommended, avoid using the following functions for more than 20 entities
+
 // binSensorType_HA (which could be omitted) could be one of the binary sensor types listed at https://www.home-assistant.io/integrations/binary_sensor/
 void createDisplay_BinarySensor(std::string entityName, std::string iconType_HA = "", std::string binSensorType_HA = "");
 // sensorType_HA (which could be omitted) could be one of the sensor types listed at https://www.home-assistant.io/integrations/sensor/

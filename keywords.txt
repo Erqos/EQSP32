@@ -11,6 +11,8 @@ EQ_TrigMode   	KEYWORD1
 EQ_WeekDay	KEYWORD1
 EQ_WifiStatus	KEYWORD1
 EQ_EthernetStatus	KEYWORD1
+EQ_MQTTBrokerStatus	KEYWORD1
+EQ_BleStatus	KEYWORD1
 CanBitRates	KEYWORD1
 EQ_InitStatus	KEYWORD1
 
@@ -19,7 +21,12 @@ EQ_InitStatus	KEYWORD1
 ###########################################
 # EQSP32 Global Objects (KEYWORD2)
 ###########################################
+EQ_USER_SPI	KEYWORD2
+
 eqx2gStream    KEYWORD2
+eqx2gSerial	KEYWORD2
+bleStream	KEYWORD2
+bleSerial	KEYWORD2
 
 
 ###########################################
@@ -51,10 +58,18 @@ isModuleDetected KEYWORD2
 # Connectivity Functions
 getWiFiStatus		KEYWORD2
 getEthernetStatus	KEYWORD2
+getMQTTStatus		KEYWORD2
+getBleStatus		KEYWORD2
 isDeviceOnline		KEYWORD2
 localIP			KEYWORD2
 ethernetIP		KEYWORD2
 wifiIP			KEYWORD2
+
+startWiFi	KEYWORD2
+stopWiFi	KEYWORD2
+clearWiFi	KEYWORD2
+startBle	KEYWORD2
+stopBle		KEYWORD2
 
 # Power Supply Monitoring
 readInputVoltage	KEYWORD2
@@ -119,6 +134,7 @@ isLocalPin	KEYWORD2
 isExpModulePin	KEYWORD2
 getDeviceName	KEYWORD2
 getDeviceID	KEYWORD2
+setDeviceName	KEYWORD2
 
 ######################################
 # EQSP32 Macros (KEYWORD2)
