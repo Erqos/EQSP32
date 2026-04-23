@@ -1,11 +1,13 @@
 /**
  * @file EQSP32_MQTT_MemoryOptimized_Demo.ino
- * @brief Demonstrates bulk MQTT entity creation using configuration arrays, including the new text control entity type.
+ * @brief Demonstrates bulk MQTT entity creation using configuration arrays, including text control entities,
+ *        and shows how to publish selected control and display entity states with and without MQTT retain.
  *
  * This example assumes:
  *   - Erqos IoT functionality is enabled.
  *   - MQTT interfacing is managed by the EQSP32 library.
- *   - The created entities are intended for use through MQTT-based interfaces such as Home Assistant or other MQTT clients.
+ *   - The created entities are intended for use through MQTT-based interfaces such as Home Assistant
+ *     or other MQTT clients.
  *
  * Bulk Entity Creation:
  *   - Uses `createControl_Switches()` to create multiple switch control entities at once.
@@ -15,31 +17,53 @@
  *   - Uses `createDisplay_Sensors()` to create multiple sensor display entities at once.
  *
  * Text Entity Support:
- *   - Demonstrates the new `TextEntityConfig` structure for creating text input entities.
+ *   - Demonstrates the `TextEntityConfig` structure for creating text input entities.
  *   - Shows how text control values can be read at runtime using `readControl_Text()`.
  *
+ * Retained Publish Demonstration:
+ *   - Demonstrates the `retain` parameter in the update functions for control and display entities.
+ *   - Control entity updates may use:
+ *       `updateControl_Switch(..., value, retain)`
+ *       `updateControl_Value(..., value, retain)`
+ *       `updateControl_Text(..., value, retain)`
+ *   - Display entity updates may use:
+ *       `updateDisplay_BinarySensor(..., value, retain)`
+ *       `updateDisplay_Sensor(..., value, retain)`
+ *   - Shows retained publishing by calling selected update functions with `retain = true`.
+ *   - Shows non-retained publishing by calling selected update functions with `retain = false`.
+ *
  * Runtime Behavior:
- *   - Reads control entities using the same read functions as the previous implementation style.
- *   - Updates display entities using the same update functions as the previous implementation style.
- *   - Mirrors switch, value, and text control changes to the USB serial monitor for easy monitoring.
+ *   - Always reads the current control values.
+ *   - Prints control value changes only when a new value is detected.
+ *   - Updates display entities periodically using the standard display update functions.
  *   - Demonstrates simple logic by reflecting control values into display entities.
  *   - Monitors and prints MQTT broker status changes using `getMQTTStatus()`.
+ *   - If `mqttAutoUpdateStateFromCommand` is disabled, the application manually republishes all control states
+ *     every 5 seconds.
  *
  * Optional Configuration:
  *   - `disableSystemMQTTEntities` may be enabled in `EQSP32Configs` to prevent automatic creation
  *     and update of the default system MQTT entities.
- *   - `mqttBrokerIp`, `mqttBrokerPort`, and `mqtt_broker_ca` may be optionally overridden in
- *     `EQSP32Configs` to customize the MQTT broker connection used by the example.
+ *   - `mqttAutoUpdateStateFromCommand` may be set to `false` to disable automatic state updates
+ *     from incoming command topics.
+ *   - When `mqttAutoUpdateStateFromCommand` is disabled, the application must manually keep the
+ *     corresponding control state topics synchronized by calling the appropriate `updateControl_*()`
+ *     functions for all relevant control entities.
+ *   - `mqttBrokerIp` and `mqttBrokerPort` may be optionally overridden in `EQSP32Configs`
+ *     to customize the MQTT broker connection used by the example.
  *
  * Notes:
- *   - This example shows the newer bulk entity creation approach, which is more compact than
+ *   - This example shows the newer bulk entity creation approach, which is more compact and memory efficient than
  *     creating each entity individually.
  *   - Runtime read and update behavior remains the same as with the previous single-entity API style.
+ *   - The `retain` parameter controls whether the current MQTT publish operation is retained by the broker.
+ *   - Automatic command-to-state updates use normal non-retained state behavior.
+ *   - If retained state publishing is required, the application must explicitly call the corresponding
+ *     `updateControl_*()` function with `retain = true`, regardless of the automatic update setting.
  *
  * @author Erqos Technologies
- * @date 2026-03-24
+ * @date 2026-04-23
  */
-
 
 #include <EQSP32.h>
 
@@ -52,7 +76,9 @@ void printMQTTStatus(EQ_MQTTBrokerStatus status);
 void monitorMQTTStatus();
 
 EQSP32 eqsp32;
+EQSP32Configs myConfigs;        // Global so the configuration remains accessible after setup
 EQTimer statusTimer(1000);
+EQTimer manualControlUpdateTimer(5000);   // Used to manually republish control states every 5 s when auto command-to-state update is disabled
 
 // -----------------------------------------------------------------------------
 // Bulk entity configuration
@@ -89,10 +115,10 @@ static const SensorEntityConfig displaySensors[] = {
 static bool outputEnabled = false;
 static bool resetCounter = false;
 
-static float setpoint = 0.0f;
+static float setpoint = 25.0f;
 static float brightness = 0.0f;
 
-static String deviceLabel = "";
+static String deviceLabel = "EQSP32 Demo";
 static String operatorNote = "";
 
 static bool outputActive = false;
@@ -116,38 +142,39 @@ void setup()
     Serial.println();
     Serial.println("EQSP32 Memory Optimized Entity Creation Demo");
     Serial.println("--------------------------------");
-    Serial.println("Demonstrates bulk MQTT entity creation and text control entities stored in flash.");
+    Serial.println("Demonstrates bulk MQTT entity creation, text control entities,");
+    Serial.println("and retained MQTT publishing.");
     Serial.println();
-
-    EQSP32Configs myConfigs;
 
     // Optional:
     // Uncomment any of the settings below to customize MQTT behavior for this example.
-    // myConfigs.disableSystemMQTTEntities = true;      // Disable automatic system MQTT entities
-    // myConfigs.mqttBrokerIp = "homeassistant.local";  // Override broker IP / hostname
-    // myConfigs.mqttBrokerPort = 1883;                       // Override broker port
-    // myConfigs.mqtt_broker_ca = "-----BEGIN CERTIFICATE-----\n"
-    //                          "...\n"
-    //                          "-----END CERTIFICATE-----\n";   // Optional TLS CA certificate
+    // myConfigs.disableSystemMQTTEntities = true;         // Disable automatic system MQTT entities
+    // myConfigs.mqttAutoUpdateStateFromCommand = false;   // Disable automatic state update from incoming command topics
+    // myConfigs.mqttBrokerIp = "homeassistant.local";     // Override broker IP / hostname
+    // myConfigs.mqttBrokerPort = 1883;                    // Override broker port
+
     eqsp32.begin(myConfigs);
 
     prevMQTTStatus = eqsp32.getMQTTStatus();
     printMQTTStatus(prevMQTTStatus);
 
     createDemoEntities();
+    
     statusTimer.start();
+    manualControlUpdateTimer.start();
 }
 
 void loop()
 {
-    readControls();
-    processLogic();
-    updateDisplays();
-    printChanges();
-    monitorMQTTStatus();
+    readControls();        // Always read current control values
+    processLogic();        // Apply logic and manual control-state publishing if needed
+    updateDisplays();      // Periodic display updates
+    printChanges();        // Print only when values changed
+    monitorMQTTStatus();   // Print only when MQTT status changed
 
     delay(10);
 }
+
 
 void createDemoEntities()
 {
@@ -177,12 +204,38 @@ void processLogic()
     if (resetCounter)
     {
         loopCounter = 0;
-        updateControl_Switch("Reset Counter", false);
+
+        // Clear the reset request after processing it.
+        // This update is always done because it is part of the demo logic itself.
+        updateControl_Switch("Reset Counter", false, true);
         resetCounter = false;
     }
 
     outputActive = outputEnabled;
     currentValue = setpoint;
+
+    // If automatic state update from command is disabled,
+    // manually republish all control states every 5 seconds.
+    //
+    // Important:
+    // - Automatic command-to-state updates use normal non-retained state behavior.
+    // - If retained state publishing is needed, the application must explicitly call
+    //   updateControl_*() with retain = true, regardless of the auto-update setting.
+    if (!myConfigs.mqttAutoUpdateStateFromCommand && manualControlUpdateTimer.isExpired())
+    {
+        manualControlUpdateTimer.reset();
+
+        updateControl_Switch("Enable Output", outputEnabled, true);
+        updateControl_Switch("Reset Counter", resetCounter, true);
+
+        updateControl_Value("Setpoint", setpoint, true);
+        updateControl_Value("Brightness", brightness, false);
+
+        updateControl_Text("Device Label", deviceLabel, true);
+        updateControl_Text("Operator Note", operatorNote, false);
+
+        Serial.println("Manual control state update published.");
+    }
 }
 
 void updateDisplays()
@@ -192,13 +245,14 @@ void updateDisplays()
         loopCounter++;
         statusTimer.reset();
 
-        updateDisplay_Sensor("Free Heap", (float)ESP.getFreeHeap());
+        // Retained display update examples
+        updateDisplay_BinarySensor("Output Active", outputActive, true);
+        updateDisplay_Sensor("Current Value", currentValue, true);
 
-        updateDisplay_BinarySensor("Output Active", outputActive);
+        // Non-retained display update examples
         updateDisplay_BinarySensor("Online", eqsp32.isDeviceOnline());
-
-        updateDisplay_Sensor("Current Value", currentValue);
         updateDisplay_Sensor("Loop Counter", (float)loopCounter);
+        updateDisplay_Sensor("Free Heap", (float)ESP.getFreeHeap());
     }
 }
 
