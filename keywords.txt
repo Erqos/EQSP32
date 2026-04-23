@@ -288,33 +288,60 @@ CONVERT_TC    KEYWORD2
 CONVERT_PT    KEYWORD2
 
 
+
+
+###########################################
+# MQTT Entity Config Structs for Array / Bulk Creation (KEYWORD1)
+###########################################
+SwitchEntityConfig			KEYWORD1
+ValueEntityConfig			KEYWORD1
+TextEntityConfig			KEYWORD1
+BinarySensorEntityConfig	KEYWORD1
+SensorEntityConfig			KEYWORD1
+
+
+###########################################
+# MQTT Entity Creation - Array / Bulk API (KEYWORD2)
+###########################################
+createControl_Switches		KEYWORD2
+createControl_Values		KEYWORD2
+createControl_Texts			KEYWORD2
+createDisplay_BinarySensors	KEYWORD2
+createDisplay_Sensors		KEYWORD2
+
+###########################################
+# MQTT Entity Read Functions (KEYWORD2)
+###########################################
+readControl_Switch			KEYWORD2
+readControl_Value			KEYWORD2
+readControl_Text			KEYWORD2
+readDisplay_BinarySensor	KEYWORD2
+readDisplay_Sensor			KEYWORD2
+
+###########################################
+# MQTT Entity Update Functions (KEYWORD2)
+###########################################
+updateControl_Switch		KEYWORD2
+updateControl_Value			KEYWORD2
+updateControl_Text			KEYWORD2
+updateDisplay_BinarySensor	KEYWORD2
+updateDisplay_Sensor		KEYWORD2
+
 ###########################################
 # MQTT Global Topics (not UID based) for Node-RED, direct device access etc. (KEYWORD2)
 ###########################################
-createGlobal_Topic	KEYWORD2
-readGlobal_Topic	KEYWORD2
-readGlobal_TopicBOOL	KEYWORD2
-readGlobal_TopicFLOAT	KEYWORD2
-updateGlobal_Topic	KEYWORD2
+createGlobal_Topic		KEYWORD2
+readGlobal_Topic			KEYWORD2
+readGlobal_TopicBOOL		KEYWORD2
+readGlobal_TopicFLOAT		KEYWORD2
+updateGlobal_Topic		KEYWORD2
+
+
 
 ###########################################
-# MQTT Control Entities for Home Assistant, Node-RED, etc. (KEYWORD2)
+# MQTT Entity Creation - Single Entity API (KEYWORD2)
 ###########################################
-createControl_Switch	KEYWORD2
-createControl_Value	KEYWORD2
-readControl_Switch	KEYWORD2
-readControl_Value	KEYWORD2
-updateControl_Switch	KEYWORD2
-updateControl_Value	KEYWORD2
-
-###########################################
-# MQTT Display Entities for Home Assistant, Node-RED, etc. (KEYWORD2)
-###########################################
+createControl_Switch		KEYWORD2
+createControl_Value			KEYWORD2
 createDisplay_BinarySensor	KEYWORD2
-createDisplay_Sensor	KEYWORD2
-readDisplay_BinarySensor	KEYWORD2
-readDisplay_Sensor	KEYWORD2
-updateDisplay_BinarySensor	KEYWORD2
-updateDisplay_Sensor	KEYWORD2
-
-
+createDisplay_Sensor		KEYWORD2

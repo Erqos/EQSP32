@@ -361,6 +361,7 @@ typedef struct
     bool disableErqosIoT = false;
     bool disableNetSwitching = false;
     bool disableSystemMQTTEntities = false; // (Optional) Set to true to disable the automatic publication and update of system entities (In/Out supply voltages, heartbeat, uptime, signal strength); any of these may be implemented in the developer's code
+    bool mqttAutoUpdateStateFromCommand = true; // When enabled, for every received MQTT command topic the system will automatically update/publish the received value to the corresponding state topic. When disabled, the state topic of the entity is only updated by calling the corresponding update function ex. updateControl_Switch().
     int bleBroadcastingMins = 3;        // Only if disableErqosIoT == false. BLE will broadcast for these many mins before turning off (setting to 0 makes BLE always available). If BLE turns off, pressing the BOOT button or webserver access is needed to reenable it.
 } EQSP32Configs;
 
@@ -2594,9 +2595,9 @@ bool readControl_Switch(const std::string& entityName);
 float readControl_Value(const std::string& entityName);
 String readControl_Text(const std::string& entityName);
 
-bool updateControl_Switch(const std::string& entityName, bool value);
-bool updateControl_Value(const std::string& entityName, float value);
-bool updateControl_Text(const std::string& entityName, String value);
+bool updateControl_Switch(const std::string& entityName, bool value, bool retain = false);
+bool updateControl_Value(const std::string& entityName, float value, bool retain = false);
+bool updateControl_Text(const std::string& entityName, String value, bool retain = false);
 
 
         //  ------------------------
@@ -2614,8 +2615,8 @@ void createDisplay_Sensor(std::string entityName, int decimals = 0, std::string 
 bool readDisplay_BinarySensor(const std::string& entityName);
 float readDisplay_Sensor(const std::string& entityName);
 
-bool updateDisplay_BinarySensor(const std::string& entityName, bool value);
-bool updateDisplay_Sensor(const std::string& entityName, float value);
+bool updateDisplay_BinarySensor(const std::string& entityName, bool value, bool retain = false);
+bool updateDisplay_Sensor(const std::string& entityName, float value, bool retain = false);
 
         //  ------------------------------------------------------------------------
         //      Global MQTT topics (Plain MQTT topics. No UID used for these.)
