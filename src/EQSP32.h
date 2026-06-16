@@ -1,7 +1,192 @@
 #ifndef EQSP32_h
 #define EQSP32_h
 
+
+
+// ============================================================================
+//                  ---         Quick API summary           ---
+// ============================================================================
+
+
+/** ---------------------------------------------------------------------------
+ *                          ---   EQSP32 Class   ---
+ *  ---------------------------------------------------------------------------
+ * - EQSP32()                     Create the main EQSP32 controller object.
+ * 
+ *  Startup
+ *  ---------------------------------------------------------------------------
+ * - begin(configs, verbose)      Start EQSP32 core, hardware, modules, and background services.
+ * - begin(verbose)               Start EQSP32 with default settings.
+ * - beginHil()                   Enable HIL test mode before begin().
+ *
+ *  Pin and channel I/O
+ *  ---------------------------------------------------------------------------
+ * - getPin(pinIndex)             Get the native ESP32 GPIO/peripheral pin for custom use.
+ * - pinMode(pinIndex, mode)      Set the mode of a main-unit pin or EQX channel.
+ * - readMode(pinIndex)           Read the current mode of a main-unit pin or EQX channel.
+ * - pinValue(pinIndex, value)    Set an output value for a configured output pin or channel.
+ * - readPin(pinIndex, trigMode)  Read a digital, analog, sensor, counter, output, or status value.
+ * 
+ *  Special mode configuration
+ *  ---------------------------------------------------------------------------
+ * - configPOUTFreq(freq)         Set the shared POUT/RELAY PWM frequency.
+ * - configPOUT(freq)             Alias for configPOUTFreq().
+ * - configSWT(pin, debounce)     Set debounce timing for SWT input mode.
+ * - configTIN(pin, beta, refR)   Set TIN conversion using Beta parameters.
+ * - configTIN(pin, A, B, C)      Set TIN conversion using Steinhart-Hart coefficients.
+ * - configTIN(pin, nA, nB, nC, refR) Set TIN conversion using normalized Steinhart-Hart coefficients.
+ * - configRELAY(pin, hold, delay) Set relay hold power and derate timing.
+ * - configPCC(pin, trigMode)     Set pulse-counting edge behavior.
+ * - configWDG(pin, delay)        Configure watchdog behavior for supported channels.
+ * 
+ *  Industrial communication
+ *  ---------------------------------------------------------------------------
+ * - configSerial(mode, baud)     Configure RS232/RS485 serial mode and baud rate.
+ * - configCAN(bitRate, id, loop) Configure the CAN interface and optional filter/loopback.
+ * - configCANNode(bitRate, node) Configure CAN filtering by CANopen-style node ID.
+ * - transmitCANFrame(message)    Send a CAN frame.
+ * - receiveCANFrame(message)     Read a CAN frame when available.
+ * 
+ *  Device and network information
+ *  ---------------------------------------------------------------------------
+ * - localIP()                    Read the active device IP address.
+ * - ethernetIP()                 Read the Ethernet IP address.
+ * - wifiIP()                     Read the Wi-Fi IP address.
+ * - isDeviceOnline()             Check whether the device is online through Wi-Fi or Ethernet.
+ * - getDeviceName()              Read the current device name.
+ * - setDeviceName(name)          Change the device name.
+ * - getDeviceID()                Read the device ID.
+ * 
+ *  Connection status
+ *  ---------------------------------------------------------------------------
+ * - getWiFiStatus()              Read Wi-Fi connection status.
+ * - getEthernetStatus()          Read Ethernet connection status.
+ * - getMQTTStatus()              Read MQTT broker connection status.
+ * - getBleStatus()               Read BLE connection/advertising status.
+ * 
+ *  Module and hardware status
+ *  ---------------------------------------------------------------------------
+ * - isModuleDetected(moduleCode) Check whether a specific EQX module is detected.
+ * - isLoRaAvailable()            Check whether the onboard LoRa module is available.
+ * 
+ *  Supply monitoring
+ *  ---------------------------------------------------------------------------
+ * - readInputVoltage()           Read the EQSP32 input supply voltage in mV.
+ * - readOutputVoltage()          Read the EQSP32 output/load supply voltage in mV.
+ * 
+ *  User button, buzzer, and LEDs
+ *  ---------------------------------------------------------------------------
+ * - readUserButton()             Read the onboard user/BOOT button state.
+ * - buzzerOn(freq, duration)     Turn the buzzer on, optionally for a fixed time.
+ * - buzzerOff()                  Turn the buzzer off.
+ * - setBleLed()                  Manually turn on the BLE LED when user-controlled.
+ * - resetBleLed()                Manually turn off the BLE LED when user-controlled.
+ * - toggleBleLed()               Manually toggle the BLE LED when user-controlled.
+ * - setWifiLed()                 Manually turn on the Wi-Fi LED when user-controlled.
+ * - resetWifiLed()               Manually turn off the Wi-Fi LED when user-controlled.
+ * - toggleWifiLed()              Manually toggle the Wi-Fi LED when user-controlled.
+ * 
+ *  Connectivity control
+ *  ---------------------------------------------------------------------------
+ * - startWiFi(ssid, password)    Start Wi-Fi using saved or provided credentials.
+ * - stopWiFi()                   Stop Wi-Fi.
+ * - clearWiFi()                  Clear saved Wi-Fi credentials.
+ * - startBle()                   Start BLE advertising.
+ * - stopBle()                    Stop BLE advertising.
+ * - updateMQTT(user, pass, en)   Update MQTT credentials and enable or disable MQTT.
+ * - updateMQTT(enable)           Enable or disable MQTT using stored credentials.
+ * 
+ *  Time and uptime
+ *  ---------------------------------------------------------------------------
+ * - printLocalTime()             Print the current local time.
+ * - isLocalTimeSynced()          Check whether local time is synchronized.
+ * - getLocalWeekDay()            Read local weekday.
+ * - getLocalYearDay()            Read day of year.
+ * - getLocalYear()               Read local year.
+ * - getLocalMonth()              Read local month.
+ * - getLocalMonthDay()           Read local day of month.
+ * - getLocalHour()               Read local hour.
+ * - getLocalMins()               Read local minute.
+ * - getLocalSecs()               Read local second.
+ * - getUptimeDays()              Read uptime days.
+ * - getUptimeHours()             Read uptime hours.
+ * - getUptimeMinutes()           Read uptime minutes.
+ * - getUptimeSeconds()           Read uptime seconds.
+ * - printUptime()                Print current uptime.
+ * - getLocalUnixTimestamp()      Read local Unix timestamp.
+ * - getFormattedLocalTime()      Read formatted local time string.
+ * - getUnixTimestamp()           Read UTC Unix timestamp.
+ * - getFormattedUnixTimestamp()  Read formatted UTC time string.
+ * 
+ *  Extra
+ *  ---------------------------------------------------------------------------
+ * - initStatus()                 Check whether initialization is not started, running, OK, or in error.
+ * - isExpModulePin(idMaskCode)   Check whether a pin code belongs to an EQX expansion module.
+ */
+
+
+/** ---------------------------------------------------------------------------
+ *                          ---   EQTimer Class   ---
+ *  ---------------------------------------------------------------------------
+ * - EQTimer(preset)              Create a stopped timer with an optional preset.
+ * - start(preset)                Start or resume the timer; optional non-zero preset updates the target.
+ * - stop()                       Stop the timer and clear elapsed time.
+ * - pause()                      Pause the timer while preserving elapsed time.
+ * - reset(preset)                Restart a running timer from zero; optional non-zero preset updates the target.
+ * - value()                      Return elapsed time in milliseconds.
+ * - isElapsed(autoReset)         True only when a running timer has reached its preset; can auto-reset.
+ * - isExpiredDisabled()          True when the timer has elapsed, is stopped/paused, or has no preset.
+ * - isExpired()                  Deprecated alias for isExpiredDisabled().
+ * - isRunning()                  True while the timer is actively counting.
+ */
+
+
+/** ---------------------------------------------------------------------------
+ *                          ---   MQTT Entities   ---
+ *  ---------------------------------------------------------------------------
+ *
+ *  Control entities
+ *  ---------------------------------------------------------------------------
+ * - createControl_Switches(items, count) Create multiple switch control entities. (Recommended)
+ * - createControl_Values(items, count)   Create multiple numeric control entities. (Recommended)
+ * - createControl_Texts(items, count)    Create multiple text control entities. (Recommended)
+ * - createControl_Switch(name, icon)     Create one switch control entity.
+ * - createControl_Value(name, min, max, decimals, icon) Create one numeric control entity.
+ *
+ * - readControl_Switch(name)             Read a switch control value.
+ * - readControl_Value(name)              Read a numeric control value.
+ * - readControl_Text(name)               Read a text control value.
+ *
+ * - updateControl_Switch(name, value, retain) Publish a switch control state.
+ * - updateControl_Value(name, value, retain)  Publish a numeric control state.
+ * - updateControl_Text(name, value, retain)   Publish a text control state.
+ *
+ *  Display / monitoring entities
+ *  ---------------------------------------------------------------------------
+ * - createDisplay_BinarySensors(items, count) Create multiple binary-sensor entities. (Recommended)
+ * - createDisplay_Sensors(items, count)       Create multiple sensor entities. (Recommended)
+ * - createDisplay_BinarySensor(name, icon, deviceClass) Create one binary-sensor entity.
+ * - createDisplay_Sensor(name, decimals, unit, icon, deviceClass) Create one sensor entity.
+ *
+ * - readDisplay_BinarySensor(name)       Read a binary-sensor display value.
+ * - readDisplay_Sensor(name)             Read a sensor display value.
+ *
+ * - updateDisplay_BinarySensor(name, value, retain) Publish a binary-sensor state.
+ * - updateDisplay_Sensor(name, value, retain)       Publish a sensor state.
+ *
+ *  Plain global topics
+ *  ---------------------------------------------------------------------------
+ * - createGlobal_Topic(topic)            Register a plain MQTT topic.
+ * - readGlobal_Topic(topicName)          Read a plain MQTT topic as String.
+ * - readGlobal_TopicBOOL(topicName)      Read a plain MQTT topic as bool.
+ * - readGlobal_TopicFLOAT(topicName)     Read a plain MQTT topic as float.
+ * - updateGlobal_Topic(topicName, payload, retain) Publish a plain MQTT topic payload.
+ */
+
+
+
 #include <Arduino.h>
+#include <RadioLib.h>
 #include <string>
 
 #include "time.h"
@@ -39,6 +224,20 @@ extern Stream& eqx2gStream;         // Use this directly to send serial messages
 // ---------------------------------------------------------------------------
 extern Stream& bleStream;           // It allows for Serial like communication over BLE (Nordic UART Service {NUS})
 #define bleSerial   bleStream       // Use bleStream or bleSerial, it is the same
+
+
+// ============================================================================
+//  EQSP32 LoRa Class
+//  Use eqsp32LoRa like a normal RadioLib SX1262 radio object.
+// ============================================================================
+class EQ_LoRaClass : public SX1262 {
+public:
+  EQ_LoRaClass(Module* mod);
+  int16_t begin(float freq = 868.0, float bw = 125.0, uint8_t sf = 7, uint8_t cr = 5, uint8_t syncWord = RADIOLIB_SX126X_SYNC_WORD_PRIVATE, int8_t power = 10, uint16_t preambleLength = 8);
+  int16_t reset(bool validate = true);
+};
+extern EQ_LoRaClass& eqsp32LoRa;
+
 
 /**
  *      EQSP32 Main unit pin codes
@@ -126,6 +325,46 @@ extern Stream& bleStream;           // It allows for Serial like communication o
 #define EQXIO_PIN_10     10 // IO Pin 10
 #define EQXIO_CHANNELS   10 // Total number of channels
 
+// ==========================
+// EQXAI - Analog Input Expansion Module
+// ==========================
+#define EQXAI_PIN_1      1  // Analog Input Pin 1
+#define EQXAI_PIN_2      2  // Analog Input  Pin 2
+#define EQXAI_PIN_3      3  // Analog Input  Pin 3
+#define EQXAI_PIN_4      4  // Analog Input  Pin 4
+#define EQXAI_PIN_5      5  // Analog Input  Pin 5
+#define EQXAI_PIN_6      6  // Analog Input  Pin 6
+#define EQXAI_PIN_7      7  // Analog Input  Pin 7
+#define EQXAI_PIN_8      8  // Analog Input  Pin 8
+#define EQXAI_CHANNELS   8  // Total number of channels
+
+// ==========================
+// EQXRA - Relay and Analog Output Expansion Module
+// ==========================
+//
+// Relay terminal grouping:
+// RL1 and RL2 have independent OUT/NO + COM.
+// RL3-RL8 are paired with shared COM: 3-4, 5-6, 7-8.
+    //  Physical channels - Terminals
+#define EQXRA_RL_1        1   // Relay 1, independent COM
+#define EQXRA_RL_2        2   // Relay 2, independent COM
+#define EQXRA_RL_3        3   // Relay 3, shared COM 3-4
+#define EQXRA_RL_4        4   // Relay 4, shared COM 3-4
+#define EQXRA_RL_5        5   // Relay 5, shared COM 5-6
+#define EQXRA_RL_6        6   // Relay 6, shared COM 5-6
+#define EQXRA_RL_7        7   // Relay 7, shared COM 7-8
+#define EQXRA_RL_8        8   // Relay 8, shared COM 7-8
+#define EQXRA_AO_1        9   // Analog output 1 target
+#define EQXRA_AO_2        10  // Analog output 2 target
+    //  Internal channels - Feedback
+#define EQXRA_AOFB_1      11  // Analog output 1 feedback
+#define EQXRA_AOFB_2      12  // Analog output 2 feedback
+#define EQXRA_RL_SUPPLY   13  // Relay coil supply voltage feedback
+#define EQXRA_SYSSTAT     14  // Module system status
+#define EQXRA_AOSTAT      15  // Analog output status
+
+#define EQXRA_CHANNELS    15  // Total user-facing logical channels
+
 
 // EQSP32 IoT expansion modules - Masks
 #define PIN_SHIFT(id)           ((id) << 0)       // Bits 0-7
@@ -159,21 +398,39 @@ extern Stream& bleStream;           // It allows for Serial like communication o
 #define EQ_AUX_3(pin)       SLAVE_3(pin)
 #define EQ_AUX_4(pin)       SLAVE_4(pin)
 
-// (EQX Modules)
+
+// ==============================================================
+//              EQX Module IDs      (EQX Modules)
+// ==============================================================
+//
+// Module ID ranges:
+// 0x01-0x0F : General I/O and mixed-signal modules
+// 0x10-0x3F : Input sensor modules
+// 0xA0-0xAF : Custom/combined modules
+// 0xE0-0xEF : Communication / IoT modules
+
 // I/O modules
-#define MAX_MODULE_TYPES    0xFF
-#define EQXIO_ID            0x01        // DIO module                  (Supported)
-#define EQXAI_ID            0x02        // Analog input voltage and 4-20mA
-// #define EQXAO_ID            0x03        // Analog output voltage and 4-20mA
+#define EQXM_MAX_MODULE_TYPES   0xFF
+#define EQXIO_ID                0x01        // DIO module                       (Supported)
+#define EQXAI_ID                0x02        // Analog input voltage and 4-20mA  (Supported)
+// #define EQXAO_ID             0x03        // Analog output voltage and 4-20mA
+
+// Input sensor modules
+// ===== Chemical / liquid sensing modules | 0x10 - 0x1F =====
+#define EQXPH_ID            0x10        // PH sensor module             (Supported)
+// ===== Thermocouple / high-temperature sensing modules | 0x20 - 0x2F =====
+#define EQXTC_ID            0x20        // Thermocouple sensor module   (Supported)
+// ===== RTD / resistance temperature sensing modules | 0x30 - 0x3F =====
+#define EQXPT_ID            0x30        // PT100 sensor module          (Supported)
+
+// Custom modules
+// ===== Combined / application-specific / local-control modules | 0xA0 - 0xBF =====
+#define EQXRA_ID            0xA0        // Relay + analog output combo module   (Supported)
 
 // IoT modules
 // #define EQXLORA_ID          0xE0      // Lora/LoraWan module
-#define EQX2G_ID            0xE1      // 2G GSM/GPRS module
-
-// Input sensor modules
-#define EQXPH_ID            0x10        // PH sensor module             (Supported)
-#define EQXTC_ID            0x20        // Thermocouple sensor module   (Supported)
-#define EQXPT_ID            0x30        // PT100 sensor module          (Supported)
+#define EQX2G_ID            0xE1      // 2G GSM/GPRS module             (Supported)
+// ==============================================================
 
 
 #define EQXIO_MACRO(idx, pin)     (MODULE_SHIFT(EQXIO_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
@@ -182,6 +439,8 @@ extern Stream& bleStream;           // It allows for Serial like communication o
 #define EQXPH_MACRO(idx, pin)     (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #define EQXTC_MACRO(idx, pin)     (MODULE_SHIFT(EQXTC_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #define EQXPT_MACRO(idx, pin)     (MODULE_SHIFT(EQXPT_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+
+#define EQXRA_MACRO(idx, pin)     (MODULE_SHIFT(EQXRA_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 
 #define EQX2G_MACRO(idx, pin)     (MODULE_SHIFT(EQX2G_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 
@@ -193,6 +452,8 @@ inline uint32_t EQXPH(int idx, int pin = 0) { return EQXPH_MACRO(idx, pin); }
 inline uint32_t EQXTC(int idx, int pin = 0) { return EQXTC_MACRO(idx, pin); }
 inline uint32_t EQXPT(int idx, int pin = 0) { return EQXPT_MACRO(idx, pin); }
 
+inline uint32_t EQXRA(int idx, int pin = 0) { return EQXRA_MACRO(idx, pin); }
+
 inline uint32_t EQX2G(int idx = 1, int pin = 0) { return EQX2G_MACRO(idx, pin); }
 
 // EQSP32 pin modes
@@ -200,18 +461,20 @@ enum EQ_PinMode : uint8_t {
     NO_MODE = 0xFF,
     CUSTOM  = 0xFE,
     INIT_NA = 0xFD,
-    DIN     = 0,        //                                                  |IOEXP pin LOW (1-8), HIGH (9-16)
-    DOUT,               // N/A
-    AIN,                //                                                  |IOEXP pin LOW (1-8)
-    CIN,                // Current input mode, returns mA x 100             |IOEXP pin HIGH (1-8)       (Must hasIOEXP be true)
-    PCC,    // (Beta)   // Pulse Capture Counter mode, counted pulses are cleared on each readPin() call for the respective pin
-    POUT,               //                                                  |IOEXP pin LOW (1-8), LOW (9-16)
-    AOUT,               // N/A
+    DIN     = 0,        //
+    DOUT,               // N/A (Do NOT use)
+    AIN,                //
+    CIN,                // Current input mode, returns mA x 100
+    PCC,                // Pulse Capture Counter mode, counted pulses are cleared on each readPin() call for the respective pin
+    POUT,               //
+    AOUT,               // EQXRA (EQX Modules)  | 0 mV - 10000 mV (value range)
+
         // Special modes
     SWT     = 8,        // Special DIN mode with debouncing timer
     TIN,                // Special AIN mode, automatic temperature conversion
     RELAY,              // Special POUT mode, starts with set power and after set time drops to holding power
     RAIN,               // Relative analog input, this returns a value of 0-1000 representing the % of read value versus the VOut reference voltage
+    SAOUT,              // EQXRA (EQX Modules)  | 0 mV - 10000 mV (value range) | Sync AOUT, special AOUT mode; Sync with the local AOUT grouped channels, ex. in EQXRA if AO1 is in SAOUT, then AO2 is also in SAOUT
 
     PH      = 0x10,     // pH measurement       (EQX Modules)
     TC,                 // thermocouple         (EQX Modules)
@@ -245,19 +508,34 @@ inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO
 
 // ====================================
 
+
+// ============================================================================
+//              EQSP32 / EQX error and status definitions
+// ============================================================================
+
+// --------------------------------------------------------------------
+//              EQXAI / CIN errors
+// --------------------------------------------------------------------
 #define CIN_OC_ERROR        -1          // CIN sensor has detected an over current condition (> 21mA)
 
+// --------------------------------------------------------------------
+//              TIN errors
+// --------------------------------------------------------------------
 #define TIN_OPEN_CIRCUIT    -9999       // Open circuit detected
 #define TIN_SHORT_CIRCUIT   9999        // Short circuit detected
 #define IS_TIN_VALID(value) ((value) != TIN_OPEN_CIRCUIT && (value) != TIN_SHORT_CIRCUIT)
 
-
+// --------------------------------------------------------------------
+//              TC errors (EQXTC)
+// --------------------------------------------------------------------
 #define TC_FAULT_OPEN       0x8001      // Thermocouple open circuit
 #define TC_FAULT_SHORT_GND  0x8002      // Thermocouple shorted to GND
 #define TC_FAULT_SHORT_VCC  0x8004      // Thermocouple shorted to VCC
 #define IS_TC_VALID(value) (((value) & 0xFF8000) != 0x8000)        // Macro to check if a Thermocouple (TC) sensor value is valid (we check if error bit or if negative temperature)
 
-
+// --------------------------------------------------------------------
+//              PT errors (EQXPT)
+// --------------------------------------------------------------------
 #define PT_FAULT_THR_HIGH   0x800080    // PT sensor RTD > High allowed threshold   (Wrong sensor value)
 #define PT_FAULT_THR_LOW    0x800040    // PT sensor RTD < Low allowed threshold    (Wrong sensor value)
 #define PT_FAULT_REFIN_LOW  0x800020    // PT sensor REF under expected             (No sensor)
@@ -266,6 +544,50 @@ inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO
 #define PT_FAULT_OVUV       0x800004    // PT sensor Over/Under voltage             (Voltage error)
 #define IS_PT_VALID(value) (((value) & 0xFF800000) != 0x800000)      // Macro to check if a PT sensor value is valid (we check error bit or if negative temperature)
 
+// --------------------------------------------------------------------
+//             Relay and analog output module errors (EQXRA)
+// --------------------------------------------------------------------
+//              System status bits
+// General module-level status. Specific bits report the source of the fault.
+// GENERAL_FAULT is a summary bit set when any fault bit is active.
+#define EQXRA_SYS_STATUS_OK                 0x00
+#define EQXRA_SYS_STATUS_SW_WDG_TRIP        0x01
+#define EQXRA_SYS_STATUS_RL_WDG_TRIP        0x02
+#define EQXRA_SYS_STATUS_AO_WDG_TRIP        0x04
+#define EQXRA_SYS_STATUS_SUPPLY_UV          0x08
+#define EQXRA_SYS_STATUS_SUPPLY_OV          0x10
+#define EQXRA_SYS_STATUS_DAC_ERR            0x20
+#define EQXRA_SYS_STATUS_AOUT_FAULT         0x40
+#define EQXRA_SYS_STATUS_GENERAL_FAULT      0x80
+
+//              AOUT status bits
+// --------------------------------------------------------------------
+// One byte [AOUT2 status << 4 | AOUT1 status]:
+// bits 0..3 = AOUT1 status
+// bits 4..7 = AOUT2 status
+
+// DEV = abs(target - feedback) > threshold for longer than delay
+// OV  = feedback > overvoltage threshold
+// SC  = target is meaningfully above zero, but feedback remains near zero
+
+#define EQXRA_AOUT_STATUS_OK                0x00
+#define EQXRA_AOUT_STATUS_CH_DEV            0x01
+// #define RSRV1                            0x02        // RESERVED
+#define EQXRA_AOUT_STATUS_CH_OV             0x04
+#define EQXRA_AOUT_STATUS_CH_SC             0x08
+#define EQXRA_AOUT_STATUS_CH_NA             0x0F
+
+#define EQXRA_AOUT_STATUS_AO1_SHIFT         0
+#define EQXRA_AOUT_STATUS_AO2_SHIFT         4
+
+#define EQXRA_AOUT_STATUS_AO1_MASK          0x0F
+#define EQXRA_AOUT_STATUS_AO2_MASK          0xF0
+#define EQXRA_AOUT_STATUS_NA                0xFF        // All flags set indicating DAC Not Available
+
+#define EQXRA_AOUT_STATUS_AO1(status)            (((status) & EQXRA_AOUT_STATUS_AO1_MASK) >> EQXRA_AOUT_STATUS_AO1_SHIFT)
+#define EQXRA_AOUT_STATUS_AO2(status)            (((status) & EQXRA_AOUT_STATUS_AO2_MASK) >> EQXRA_AOUT_STATUS_AO2_SHIFT)
+#define EQXRA_SAOUT_APPLY(aout)                  ((aout & 0x3FFF) | 0x8000)     // Set the apply bit for Sync AOUT mode
+// ============================================================================
 
 enum EQ_InitStatus : uint8_t {
     INIT_NOT_STARTED,    // `begin()` has not been called yet.
@@ -519,6 +841,51 @@ public:
     void begin(bool verboseEnabled);
 
     /**
+     * @brief Enables Hardware-in-the-Loop (HIL) test mode.
+     *
+     * HIL allows an external tester to run the real user sketch without real sensors
+     * or expansion-module inputs. The sketch remains unchanged: normal APIs such as
+     * readPin(), pinValue(), getLocalHour(), getLocalMins(), etc. are still used.
+     *
+     * Call this before begin().
+     *
+     * In HIL mode, test data is sent over USB Serial using text frames terminated by
+     * newline:
+     *
+     * Commands:
+     * -!EQ.1=1                         Set main EQ input pin 1
+     * -!XIO.1.3=1                      Set EQXIO module 1, pin 3 input state
+     * -!XAI.1.2=2450                   Set EQXAI module 1, channel 2 returned value
+     * -!XTC.1.1=235                    Set EQXTC module 1, channel 1 returned value
+     * -!XPT.1.1=2415                   Set EQXPT module 1, channel 1 returned value
+     * -!XPH.1.1=700                    Set EQXPH module 1 pH returned value
+     * -!TIME=2026-06-13T08:00:00       Set ESP32 system time
+     * -!RST                            Restart the device
+     *
+     * Queries:
+     * -?EQ.1                           Read main EQ pin 1
+     * -?XAI.1.2                        Read EQXAI module 1, channel 2
+     * -?TIME                           Read current system time
+     * -?STATUS                         Read active HIL command/query buffer status
+     *
+     * Multiple items may be separated with '/':
+     * -!EQ.1=1/XIO.1.3=0/XAI.1.2=2450
+     * -?EQ.1/XAI.1.2/TIME
+     *
+     * Periodic frames use #period_ms:
+     * -?#500/EQ.1/XAI.1.2              Query every 500 ms
+     * -!#1000/EQ.1=1                   Apply command every 1000 ms
+     *
+     * Send "-!" to clear the command buffer and "-?" to clear the query buffer.
+     *
+     * HIL overrides input/sensor values only. Output reads still return the normal
+     * EQSP32 output cache set by pinValue(). EQXRA and EQX2G are not input-injected.
+     *
+     * @return true if HIL mode was enabled, false if EQSP32 is not ready to enter HIL.
+     */
+    bool beginHil();
+
+    /**
      * @brief Retrieves the current initialization status of the EQSP32 core.
      *
      * This function reports the state of the internal EQSP32 startup sequence
@@ -563,26 +930,22 @@ public:
 
 
     /**
-     * @brief Checks if a given pin identifier corresponds to an expansion module pin on the EQSP32.
-     * 
-     * This function determines whether a given pin identifier (idMaskCode) corresponds to a pin on one of the expansion modules
-     * of the EQSP32. It checks if the pin is not on the main unit but on an expansion module.
-     * 
-     * @param idMaskCode The pin identifier mask code to check.
-     * 
-     * @return Returns true if the pin identifier corresponds to a pin on an expansion module, otherwise returns false.
-     * 
+     * @brief Checks if a given pin identifier corresponds to an expansion module pin/channel.
+     *
+     * This function determines whether the provided encoded pin/channel identifier refers to an EQX expansion module rather than the EQSP32 main unit.
+     *
+     * @param idMaskCode The encoded pin/channel identifier to check.
+     *
+     * @return `true` if the identifier refers to an EQX expansion-module pin/channel; otherwise `false`.
+     *
      * @example
-     * Usage example:
-     * 
      * @code
-     * EQSP32 eqsp32;
-     * uint32_t pinCode = EQXPH(EQ_PIN_3); // Example pin code for expansion module
-     * bool isExpPin = eqsp32.isExpModulePin(pinCode);
-     * if (isExpPin) {
-     *     Serial.println("The pin is on an expansion module.");
+     * uint32_t pinCode = EQXIO(1, EQXIO_PIN_3);  // EQXIO module 1, pin 3
+     *
+     * if (eqsp32.isExpModulePin(pinCode)) {
+     *     Serial.println("The pin/channel is on an expansion module.");
      * } else {
-     *     Serial.println("The pin is on the main unit.");
+     *     Serial.println("The pin/channel is on the EQSP32 main unit.");
      * }
      * @endcode
      */
@@ -622,6 +985,45 @@ public:
 
 
     /**
+     * @brief Checks whether the onboard SX1262 LoRa module is available and ready for use.
+     *
+     * This function reports the result of the internal LoRa initialization process
+     * performed during `eqsp32.begin()`. It returns `true` only if an SX1262-based
+     * LoRa module was successfully detected, its variant was identified, and the
+     * module was initialized correctly.
+     *
+     * If this function returns `false`, LoRa functionality is not available and
+     * calls to `eqsp32LoRa.begin()` or other LoRa operations should be avoided.
+     *
+     * @return `true` if the SX1262 LoRa module is available and ready for use;
+     *         `false` otherwise.
+     *
+     * @note
+     * - This function reflects the LoRa initialization status established during
+     *   `eqsp32.begin()`.
+     * - Supported SX1262 variants are automatically detected by the library.
+     * - A return value of `false` may indicate that no supported LoRa module is
+     *   installed, the module could not be identified, or initialization failed.
+     *
+     * @example
+     * @code
+     * eqsp32.begin();
+     *
+     * if (eqsp32.isLoRaAvailable()) {
+     *     int16_t state = eqsp32LoRa.begin();
+     *
+     *     if (state == RADIOLIB_ERR_NONE) {
+     *         Serial.println("LoRa ready.");
+     *     }
+     * } else {
+     *     Serial.println("LoRa module not available.");
+     * }
+     * @endcode
+     */
+    bool isLoRaAvailable();
+
+
+    /**
      * @brief Retrieves the corresponding ESP32 pin number for a given EQSP32 pin index.
      * 
      * This function maps a high-level EQSP32 pin index to the actual ESP32 GPIO number or peripheral pin.
@@ -634,77 +1036,83 @@ public:
      * @return The corresponding ESP32 pin number if the pin is valid, or -1 if the pin index does not match any known configuration.
      * 
      * @example
+     * @code
      * int rs232Tx = eqsp32.getPin(EQ_RS232_TX); // Gets the ESP32 pin number for RS232 transmission.
      * int rs232Rx = eqsp32.getPin(EQ_RS232_RX); // Gets the ESP32 pin number for RS232 transmission.
+     * @endcode
      */
     int getPin(int pinIndex);
 
 
         // EQ pin configurations
     /**
-     * @brief Sets the mode for a specified pin on the EQSP32.
-     * 
-     * This function allows you to set the mode for a pin on the EQSP32,
-     * which has 16 analog and digital I/O pins.
-     * Pins 1-8 also support both analog input, while pins 9-16 also support pseudo-analog output (pseudo-analog using PWM).
-     * The pin can be set to different modes, including:
-     * 
-     * - Digital Input (DIN): Configures the pin as a standard digital input.
-     * - Analog Input (AIN): Configures the pin as an analog input for pins 1-8.
-     * - Power PWM Output (POUT): Configures the pin as a power PWM output. The duty will be set using the 'pinValue' function.
-     *      //Special Modes
-     * - Switch (SWT): Configures the pin as a special digital input mode with debouncing timer.
-     * - Temperature Input (TIN): Configures the pin as a special analog input mode for automatic temperature conversion in celsius * 10 (needs /10.0 to get actual temperature as float with 0.1 precision).
-     * - Relay (RELAY): Configures the pin as a special power PWM output mode for relay control. Starts with set power from 'pinValue', and after a set time drops to holding power. Needs to be set to 0 before restarting the start-hold power cycle.
-     * - Relative AIN (RAIN): Pin operates in AIN mode and returns the measured voltage relative to 5V Vout in %, 1000 represents 100%.
-     * 
-     * The function returns true if the configuration is successful, and false otherwise.
-     * 
-     * @param pinIndex The index of the pin to set the mode for (1 to 16).
-     * Master/Slave and Expansion module masks are handled automatically.
-     * @param mode The mode to set for the pin. Available options are DIN, AIN, POUT, SWT, TIN, RELAY.
-     * @param freq N/A (DEPRECATED) Previously: "The PWM frequency to use for analog output (AOUT) mode. Ignored for other modes. Default is 500 Hz."
-     * 
-     * @return true if the configuration is successful, false otherwise.
-     * 
+     * @brief Sets the mode for an EQSP32 main-unit pin or supported EQX expansion-module channel.
+     *
+     * This function configures a pin/channel for one of the available `EQ_PinMode` modes.
+     * Supported modes depend on the selected pin/channel, hardware version, and installed expansion module.
+     *
+     * Supported mode categories:
+     *
+     * General I/O modes:
+     * - `DIN`: Digital input. Used by EQSP32 main pins and supported EQX digital-input channels.
+     * - `AIN`: Analog voltage input. On the EQSP32 main unit this is available on pins 1–8; also used by supported analog-input expansion modules.
+     * - `CIN`: Current input. Used by supported current-input hardware or EQX analog-input modules.
+     * - `POUT`: Power PWM output. Used by EQSP32 main pins and supported EQX output channels.
+     * - `PCC`: Pulse Capture Count input. On the EQSP32 main unit this is available on pins 9–16, with up to four active PCC channels.
+     *
+     * Special I/O modes:
+     * - `SWT`: Debounced digital input. Call `configSWT()` after `pinMode()`.
+     * - `TIN`: NTC temperature input. On the EQSP32 main unit this is available on pins 1–8. Call `configTIN()` after `pinMode()`. `readPin()` returns Celsius × 10.
+     * - `RELAY`: Relay-optimized POUT mode. Call `configRELAY()` after `pinMode()`.
+     * - `RAIN`: Relative analog input. On the EQSP32 main unit this is available on pins 1–8 and returns 0–1000 relative to 5V VOut.
+     *
+     * EQX module-specific modes:
+     * - `AOUT`: Analog voltage output, used by supported analog-output expansion modules such as EQXRA.
+     * - `SAOUT`: Synchronized analog voltage output, used by supported analog-output expansion modules such as EQXRA.
+     * - `PH`: pH measurement mode, used by EQXPH.
+     * - `TC`: Thermocouple temperature mode, used by EQXTC.
+     * - `PT100_24W`: PT100 RTD mode for 2-wire / 4-wire configurations, used by EQXPT.
+     * - `PT100_3W`: PT100 RTD mode for 3-wire configuration, used by EQXPT.
+     *
+     * @param pinIndex The EQSP32 pin index or encoded EQX channel code. Master/Slave and expansion-module masks are handled automatically.
+     * @param mode The mode to set for the pin/channel. Unsupported mode/pin combinations return `false`.
+     * @param freq Deprecated and ignored. Use `configPOUTFreq()` to set the shared POUT/RELAY PWM frequency.
+     *
+     * @return `true` if the mode was applied successfully; `false` if the pin/channel is invalid, unsupported, unavailable, or the requested mode is not allowed.
+     *
      * @example
-     * Usage example:
-     * bool success = EQSP32::pinMode(3, AIN); // Configures pin 3 as a analog input
+     * @code
+     * eqsp32.pinMode(EQ_PIN_3, AIN);              // Main-unit analog input
+     * eqsp32.pinMode(EQ_PIN_12, PCC);             // Main-unit pulse counter input
+     * eqsp32.pinMode(EQXAI(1, 1), CIN);           // EQXAI channel 1 current input, if supported
+     * eqsp32.pinMode(EQXRA(1, EQXRA_AO_1), AOUT); // EQXRA analog output
+     * @endcode
      */
     bool pinMode(int pinIndex, EQ_PinMode mode, int freq = 500);
 
 
     /**
-     * @brief Reads the current mode of a specified pin on the EQSP32.
-     * 
-     * This function retrieves the current mode of a specified pin on the EQSP32.
-     * If the pin is valid and local, it returns the current mode of the pin, else it returns `NO_MODE`.
-     * 
-     * @param pinIndex The index of the pin to read the mode from (1 to 16).
-     * 
-     * @return The current mode of the specified pin. It returns one of the following EQ_PinMode values: 
-     * `DIN`, `AIN`, `POUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `NO_MODE`.
-     * 
+     * @brief Reads the current mode of an EQSP32 main-unit pin or supported EQX expansion-module channel.
+     *
+     * This function returns the currently configured `EQ_PinMode` for the selected pin/channel.
+     *
+     * @param pinIndex The EQSP32 pin index or encoded EQX channel code to check.
+     *
+     * @return The current `EQ_PinMode`, such as `DIN`, `AIN`, `CIN`, `PCC`, `POUT`, `AOUT`, `SAOUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `PH`, `TC`, `PT100_24W`, `PT100_3W`,
+     * or `NO_MODE` if the pin/channel is invalid, unavailable, unsupported, or not configured.
+     *
      * @example
-     * Usage example:
-     * 
      * @code
-     * EQSP32 eqsp32;
-     * eqsp32.begin();
-     * EQ_PinMode mode = eqsp32.readMode(EQ_PIN_3); // Reads the mode of pin 3
-     * if (mode != NO_MODE) {
-     *     Serial.println("The pin mode is valid and local.");
-     * } else {
-     *     Serial.println("The pin mode is not valid, not configured or not local.");
+     * EQ_PinMode mode = eqsp32.readMode(EQ_PIN_3);
+     *
+     * if (mode == AIN) {
+     *     Serial.println("Pin is configured as analog input.");
      * }
-     * 
-     * // Example for checking the mode of a slave ID 1 pin
-     * uint32_t slavePin = SLAVE_1(EQ_PIN_3);
-     * EQ_PinMode slaveMode = eqsp32.readMode(slavePin); // Reads the mode of slave ID 1 pin 3
-     * if (slaveMode != NO_MODE) {
-     *     Serial.println("The slave pin mode is valid and local for Slave 1.");
-     * } else {
-     *     Serial.println("The slave pin mode is not valid, not configured or this unit is not in Slave 1 mode.");
+     *
+     * EQ_PinMode eqxMode = eqsp32.readMode(EQXAI(1, 1));
+     *
+     * if (eqxMode == CIN) {
+     *     Serial.println("EQXAI channel is configured as current input.");
      * }
      * @endcode
      */
@@ -712,63 +1120,77 @@ public:
 
 
     /**
-     * @brief Sets the value for a specified pin on the EQSP32.
-     * 
-     * This function allows you to set the value of a pin on the EQSP32,
-     * which has 16 analog and digital I/O pins.
-     * Pins 1-8 also support analog input functionality,
-     * while pins 9-16 support pseudo-analog output (Push-Pull PWM).
-     * The pin mode will be set using the 'pinMode' function.
-     * 
-     * - Power PWM Output (POUT): Generates pull-down power PWM output. The value should range from 0 to 1000, corresponding to 0% to 100% duty cycle.
-     * - Relay (RELAY): Special POUT mode, starts with set power, and after a set time drops to holding power. Needs to be set to 0 before restarting the start-hold power cycle.
-     * 
-     * The function returns true if the configuration is successful, and false otherwise.
-     * 
-     * @param pinIndex The index of the pin to set the value for (1 to 16).
-     * @param value The value to set for the pin. For digital pins, a non-zero value represents HIGH, and 0 represents LOW. For analog pins, the value should range from 0 to 1000, corresponding to 0% to 100%.
-     * 
-     * @return true if the operation is successful, false otherwise.
-     * 
+     * @brief Sets the commanded output value for an EQSP32 main-unit output pin or supported EQX expansion-module output channel.
+     *
+     * This function writes an output command to a pin/channel that was previously configured with `pinMode()`. The meaning and valid range of `value` depend on the configured output mode and selected hardware.
+     *
+     * EQSP32 main-unit outputs are open-drain / low-side pull-down outputs. In `POUT` and `RELAY` modes, the output switches the connected load to GND using PWM or ON/OFF control; it does not drive a push-pull voltage output.
+     *
+     * Typical value ranges:
+     * - `POUT`: low-side PWM duty command, 0–1000 representing 0–100%.
+     * - `RELAY`: relay power command, 0–1000. The initial power is set by `pinValue()`, then `configRELAY()` controls the drop to hold power after the derate delay.
+     * - `AOUT`: analog output target voltage in millivolts, typically 0–10000 mV on supported EQX analog-output modules.
+     * - `SAOUT`: synchronized analog output target voltage in millivolts, typically 0–10000 mV on supported EQX analog-output modules.
+     * - Digital or relay-style EQX outputs: 0 means OFF; non-zero means ON, where supported. PWM-capable EQX outputs use the mode-specific value range.
+     *
+     * @param pinIndex The EQSP32 pin index or encoded EQX output channel code.
+     * @param value The output command value. Valid range depends on the configured output mode/channel.
+     *
+     * @return `true` if the output command was accepted; `false` if the pin/channel is invalid, unavailable, not configured as a supported output, or the value is outside the allowed range.
+     *
      * @example
-     * Usage example:
-     * bool success = EQSP32::pinValue(3, 750); // Sets the value of pin 3 to 75%
+     * @code
+     * eqsp32.pinMode(EQ_PIN_5, POUT);
+     * eqsp32.pinValue(EQ_PIN_5, 750);              // 75% low-side PWM duty
+     *
+     * eqsp32.pinMode(EQ_PIN_6, RELAY);
+     * eqsp32.configRELAY(EQ_PIN_6, 300, 1500);
+     * eqsp32.pinValue(EQ_PIN_6, 1000);             // Start relay at full power
+     *
+     * eqsp32.pinMode(EQXRA(1, EQXRA_AO_1), AOUT);
+     * eqsp32.pinValue(EQXRA(1, EQXRA_AO_1), 5000); // 5.000 V analog output target
+     * @endcode
      */
     bool pinValue(int pinIndex, int value);
 
 
     /**
-     * @brief Reads the value of a specified pin on the EQSP32.
-     * 
-     * This function allows you to read the value of a pin on the EQSP32, considering different PinModes.
-     * For analog input pins (AIN), it returns the analog value in mV.
-     * For temperature input pins (TIN), it calculates and returns the temperature in Celsius * 10 (need to divide by 10.0 to get actual value with 0.1 precision).
-     * For other pin modes, it reads the digital state of the pin and considers the specified trigger mode (default is STATE).
-     * 
-     * @param pinIndex The index of the pin to read the value from (1 to 16).
-     * @param trigMode The trigger mode to consider when reading digital pins. Options are STATE, ON_RISING, ON_FALLING, and ON_TOGGLE. Default is STATE.
-     * 
-     * @return The pin value based on the EQ_PinMode. For AIN, it returns the analog value in mV. For TIN, it returns the temperature in Celsius * 10.
-     * For other input type PinModes, it returns 1 if the pin state is HIGH, and 0 if the pin state is LOW. Returns -1 if the pin index is invalid.
-     * For output type PinModes, it returns the user set pinValue. Ex. if eqsp32.pinValue(2, 500), eqsp32.readPin(2) will return 500 (assuming it is set in one of the output modes).
-     * 
-     * @attention The trigger mode is applicable only to digital pins. For analog and temperature pins, the trigger mode is ignored.
-     * For TIN pins, the temperature calculation assumes the EQ's 5V is used as reference.
-     * 
-     * @note When reading a pin with a specific trigger mode (e.g., ON_RISING), the function updates the internal state. If you read the pin for ON_RISING and it is actually a falling edge, the internal state is updated. On the next read for ON_FALLING, it will return false, even if the actual edge was falling during the previous read. Take this into consideration when reading pins with trigger modes.
-     * 
-     * @section TrigModes Trigger Modes:
-     * 
-     * - STATE: Returns the current digital state of the pin (HIGH or LOW).
-     * - ON_RISING: Returns true when the pin transitions from LOW to HIGH (rising edge).
-     * - ON_FALLING: Returns true when the pin transitions from HIGH to LOW (falling edge).
-     * - ON_TOGGLE: Returns true on each transition, alternating between HIGH and LOW.
-     * 
+     * @brief Reads the value of an EQSP32 main-unit pin or supported EQX expansion-module channel.
+     *
+     * This function returns a value based on the pin/channel mode previously set with `pinMode()`. For digital input modes, the optional `trigMode` parameter can be used to detect state, rising edge, falling edge, or toggle events. For analog, sensor, counter, and output modes, `trigMode` is ignored unless otherwise documented.
+     *
+     * Return values by mode:
+     * - `DIN` / `SWT`: digital state or trigger event, depending on `trigMode`.
+     * - `PCC`: accumulated pulse count since the last read; reading clears the count.
+     * - `AIN`: measured voltage in millivolts (mV).
+     * - `CIN`: measured current in mA × 100, or `CIN_OC_ERROR` on overcurrent.
+     * - `RAIN`: relative analog value from 0–1000, referenced to the monitored 5V VOut rail.
+     * - `TIN`: temperature in Celsius × 10, or `TIN_OPEN_CIRCUIT` / `TIN_SHORT_CIRCUIT`.
+     * - `PH`: pH × 100.
+     * - `TC`: thermocouple temperature in Celsius × 10, or a `TC_FAULT_*` code.
+     * - `PT100_24W` / `PT100_3W`: PT100 temperature in Celsius × 100, or a `PT_FAULT_*` code.
+     * - Output modes such as `POUT`, `RELAY`, `AOUT`, and `SAOUT` generally return the last commanded value; feedback/status channels may return module-specific values.
+     *
+     * @param pinIndex The EQSP32 pin index or encoded EQX channel code to read.
+     * @param trigMode Trigger mode for digital input reads. Options are `STATE`, `ON_RISING`, `ON_FALLING`, and `ON_TOGGLE`. Default is `STATE`.
+     *
+     * @return The pin/channel value according to its configured mode, or `-1` if the pin/channel is invalid, unavailable, or unsupported.
+     *
+     * @note For `PCC`, pulse trigger behavior is configured using `configPCC()`, not the `trigMode` parameter of `readPin()`.
+     * @note When using edge trigger modes with digital inputs, each read updates the internal previous-state tracking. Reading with one trigger mode may affect the result of a later read using another trigger mode.
+     *
      * @example
-     * Usage example:
-     * int value = EQSP32::readPin(3, ON_RISING); // Reads the digital value of pin 3, considering ON_RISING trigger mode
+     * @code
+     * int digitalState = eqsp32.readPin(EQ_PIN_1);              // DIN/SWT state
+     * int risingEdge   = eqsp32.readPin(EQ_PIN_1, ON_RISING);   // Digital rising-edge event
+     * int voltage_mV   = eqsp32.readPin(EQ_PIN_2);              // AIN in mV
+     * int temp_raw     = eqsp32.readPin(EQ_PIN_3);              // TIN in Celsius × 10
+     * int pulseCount   = eqsp32.readPin(EQ_PIN_12);             // PCC count, clears after read
+     *
+     * float temperature_C = CONVERT_TIN(temp_raw);
+     * @endcode
      */
-    int readPin(int pinIndex, EQ_TrigMode trigMode = STATE);    // New method to read pin values
+    int readPin(int pinIndex, EQ_TrigMode trigMode = STATE);
 
 
     /**
@@ -795,15 +1217,15 @@ public:
      * @note The frequency range of the power PWM output is within audible range.
      * 
      * @example
-     * Usage example:
-     * bool success = EQSP32::configPOUTFreq(500); // Sets the PWM frequency for Power PWM Output (POUT) mode to 500 Hz
+     * bool success = eqsp32.configPOUTFreq(500); // Sets the PWM frequency for Power PWM Output (POUT) mode to 500 Hz
      */
     bool configPOUTFreq(int freq);
+    #define configPOUT(x)   configPOUTFreq(x)
 
 
         // Special mode configurations
     /**
-     * @brief Configures the Switch (SWT) mode on the EQSP32.
+     * @brief Configures the Switch (SWT) debounce settings on the EQSP32.
      * 
      * This function allows you to configure the Switch (SWT) mode for a specified pin on the EQSP32.
      * In SWT mode, the pin operates as a special digital input with a debouncing timer.
@@ -814,35 +1236,129 @@ public:
      * 
      * @return true if the configuration is successful, false otherwise. Returns false if the provided pin index is out of range (1 to 16).
      * 
+     * @note This function does not set the pin mode. Configure the pin first using `pinMode(pinIndex, SWT)`; this function only adjusts additional settings for a pin already configured in SWT mode.
+     * 
      * @example
-     * Usage example:
-     * bool success = EQSP32::configSWT(3, 150); // Configures pin 3 for Switch (SWT) mode with a debounce time of 150 milliseconds
+     * @code
+     * eqsp32.pinMode(EQ_PIN_3, SWT);
+     * bool success = eqsp32.configSWT(EQ_PIN_3, 150); // Configures pin 3 for Switch (SWT) mode with a debounce time of 150 milliseconds
+     * @endcode
      */
     bool configSWT(int pinIndex, int debounceTime_ms = 100);
 
 
     /**
-     * @brief Configures the Temperature Input (TIN) mode on the EQSP32.
+     * @brief Configures the Temperature Input (TIN) conversion settings on the EQSP32.
      * 
-     * This function allows you to configure the Temperature Input (TIN) mode for a specified pin on the EQSP32.
+     * This function allows you to configure the Temperature Input (TIN) conversion settings for a specified pin on the EQSP32.
+     * The pin must already be configured in TIN mode using `pinMode(pinIndex, TIN)`.
      * In TIN mode, the pin operates as a special analog input mode designed for automatic temperature conversion.
      * You can set the beta coefficient and reference resistance values using the 'beta' and 'referenceResistance' parameters, respectively.
      * 
-     * @param pinIndex The index of the pin to configure for Temperature Input (TIN) mode (1 to 8).
-     * @param beta The beta coefficient value for temperature conversion. Default is 3988.
-     * @param referenceResistance The reference resistance value for temperature conversion. Default is 10000.
+     * @param pinIndex The index of the pin to configure TIN conversion settings for (1 to 8).
+     * @param beta The beta coefficient value for temperature conversion. Default is 3435.
+     * @param referenceResistance The reference resistance value for temperature conversion, in ohms. Default is 10000.
      * 
-     * @return true if the configuration is successful, false otherwise. Returns false if the provided pin index is out of range (1 to 8).
+     * @return true if the configuration is successful, false otherwise. Returns false if the provided pin index is out of range (1 to 8), or if the pin is not already configured in TIN mode.
+     *
+     * @note This function does not set the pin mode.
+     * Configure the pin first using `pinMode(pinIndex, TIN)`;
+     * this function only adjusts additional settings for a pin already configured in TIN mode.
+     * `readPin(pinIndex)` returns the converted temperature in Celsius × 10.
      * 
      * @example
-     * Usage example:
-     * bool success = EQSP32::configTIN(2, 4000, 12000); // Configures pin 2 for Temperature Input (TIN) mode with a beta coefficient of 4000 and a reference resistance of 12000 ohms
+     * @code
+     * eqsp32.pinMode(EQ_PIN_2, TIN);
+     * bool success = eqsp32.configTIN(EQ_PIN_2, 4000, 12000); // Beta 4000, reference resistance 12000 ohms
+     * @endcode
      */
     bool configTIN(int pinIndex, int beta = 3435, int referenceResistance = 10000);
 
 
     /**
-     * @brief Configures the Relay (RELAY) mode on the EQSP32.
+     * @brief Configures TIN temperature conversion using Steinhart-Hart coefficients.
+     *
+     * Use this overload when your NTC thermistor datasheet provides standard Steinhart-Hart A, B, and C coefficients instead of a Beta value.
+     *
+     * The pin must already be configured in `TIN` mode. This function only sets the temperature-conversion coefficients used by `readPin(pinIndex)`.
+     *
+     * @param pinIndex The EQSP32 input pin to configure. Valid range is 1 to 8 for EQSP32 main-unit pins.
+     * @param A The Steinhart-Hart A coefficient from the thermistor datasheet.
+     * @param B The Steinhart-Hart B coefficient from the thermistor datasheet.
+     * @param C The Steinhart-Hart C coefficient from the thermistor datasheet.
+     *
+     * @return `true` if the TIN conversion settings were applied successfully; otherwise `false`.
+     *
+     * @note This function does not set the pin mode.
+     * Configure the pin first using `pinMode(pinIndex, TIN)`;
+     * this function only adjusts additional settings for a pin already configured in TIN mode.
+     * `readPin(pinIndex)` returns the converted temperature in Celsius × 10.
+     *
+     * @example
+     * @code
+     * eqsp32.pinMode(EQ_PIN_2, TIN);
+     * bool success = eqsp32.configTIN(EQ_PIN_2, 0.001129148, 0.000234125, 0.0000000876741);
+     *
+     * int temp_raw = eqsp32.readPin(EQ_PIN_2);   // Celsius × 10
+     * float temp_C = CONVERT_TIN(temp_raw);
+     * @endcode
+     */
+    bool configTIN(int pinIndex, double A, double B, double C);
+
+
+    /**
+     * @brief Configures TIN temperature conversion using normalized Steinhart-Hart coefficients.
+     *
+     * Use this overload when your NTC thermistor datasheet provides normalized Steinhart-Hart coefficients referenced to the thermistor nominal resistance.
+     * This form is commonly used by some thermistor manufacturers, where the logarithmic term is based on the ratio between the measured thermistor resistance and its reference resistance at 25 °C.
+     *
+     * The normalized Steinhart-Hart equation is:
+     *
+     *     1/T = nA + nB*ln(R/Rref) + nC*(ln(R/Rref))^3
+     *
+     * where T is the temperature in Kelvin, R is the measured thermistor resistance in ohms, Rref is the thermistor reference resistance in ohms, typically specified at 25 °C,
+     * and nA, nB, and nC are the normalized Steinhart-Hart coefficients provided by the thermistor manufacturer.
+     *
+     * The pin must already be configured in `TIN` mode.
+     * This function only sets the normalized temperature-conversion coefficients used by `readPin(pinIndex)`.
+     * `readPin(pinIndex)` returns the converted temperature in Celsius × 10.
+     *
+     * @param pinIndex The EQSP32 input pin to configure. Valid range is 1 to 8 for EQSP32 main-unit pins.
+     * @param nA The normalized Steinhart-Hart nA coefficient from the thermistor datasheet.
+     * @param nB The normalized Steinhart-Hart nB coefficient from the thermistor datasheet.
+     * @param nC The normalized Steinhart-Hart nC coefficient from the thermistor datasheet.
+     * @param referenceResistance The thermistor reference resistance (Rref) in ohms at 25 °C.
+     *
+     * @return `true` if the TIN conversion settings were applied successfully; otherwise `false`.
+     *
+     * @note This function does not set the pin mode. Configure the pin first using `pinMode(pinIndex, TIN)`;
+     * this function only adjusts additional settings for a pin already configured in TIN mode.
+     * `readPin(pinIndex)` returns the converted temperature in Celsius × 10.
+     * @note This overload uses the normalized Steinhart-Hart equation based on `ln(R/Rref)`.
+     * It is different from the standard Steinhart-Hart overload, which uses `ln(R)` directly and does not require a reference resistance.
+     * @note Some manufacturers provide an additional D coefficient using `1/T = nA + nB*x + nC*x² + nD*x³`, where `x = ln(R/Rref)`.
+     * This overload ignores the D coefficient and uses only the nA, nB, and nC terms.
+     *
+     * @example
+     * @code
+     * eqsp32.pinMode(EQ_PIN_2, TIN);
+     *
+     * bool success = eqsp32.configTIN(
+     *     EQ_PIN_2,
+     *     3.354016E-03,
+     *     2.569850E-04,
+     *     2.620131E-06,
+     *     10000
+     * );
+     *
+     * int temp_raw = eqsp32.readPin(EQ_PIN_2);   // Celsius × 10
+     * float temp_C = CONVERT_TIN(temp_raw);
+     * @endcode
+     */
+    bool configTIN(int pinIndex, double nA, double nB, double nC, int referenceResistance);
+
+    /**
+     * @brief Configures the Relay (RELAY) output settings on the EQSP32.
      * 
      * This function allows you to configure the Relay (RELAY) mode for a specified pin on the EQSP32.
      * In RELAY mode, the pin operates as a special Power PWM Output (POUT) mode designed for relay control.
@@ -855,44 +1371,144 @@ public:
      * @param derateDelay The derate delay in milliseconds. This is the time delay before dropping to the holding power level. Default is 1000 milliseconds.
      * 
      * @return true if the configuration is successful, false otherwise. Returns false if the provided pin index is out of range (1 to 16).
+     *
+     * @note This function does not set the pin mode. Configure the pin first using `pinMode(pinIndex, RELAY)`; this function only adjusts additional settings for a pin already configured in RELAY mode.
      * 
      * @example
-     * Usage example:
-     * bool success = EQSP32::configRELAY(4, 300, 1500); // Configures pin 4 for Relay (RELAY) mode with a hold value of 300 and a derate delay of 1500 milliseconds
+     * @code
+     * eqsp32.pinMode(EQ_PIN_4, RELAY);
+     * bool success = eqsp32.configRELAY(EQ_PIN_4, 300, 1500); // Configures pin 4 for Relay (RELAY) mode with a hold value of 300 and a derate delay of 1500 milliseconds
+     * @endcode
      */    
     bool configRELAY(int pinIndex, int holdValue = 500, int derateDelay = 1000);
 
 
     /**
-     * @brief Configures a terminal pin for PCC (Pulse Capture Count) mode using one of the four available hardware pulse counters.
-     * 
-     * PCC mode allows counting input pulses on selected EQSP32 terminal pins (9–16) using hardware-level pulse counters.
-     * This function sets up the specified pin to count rising, falling, or both edges, depending on the selected mode.
-     * 
-     * - Only terminal pins `9 through 16` support PCC mode.
-     * - A maximum of `four` of these pins can be used simultaneously due to hardware pulse counter limitations.
-     *   If you attempt to configure a fifth pin, the function will return `false`.
-     * 
-     * If `configPCC()` is called for a pin that was not already set in PCC mode, the mode will be automatically assigned internally
-     * if allowed.
-     * 
+     * @brief Configures the trigger behavior for a pin already set to PCC (Pulse Capture Count) mode.
+     *
+     * PCC mode counts input pulses on selected EQSP32 terminal pins (9–16) using hardware-level pulse counters. Before calling this function, the pin must first be configured as PCC:
+     *     eqsp32.pinMode(pinIndex, PCC);
+     *
+     * Hardware limitations:
+     * - Only terminal pins 9 through 16 support PCC mode.
+     * - A maximum of four PCC pins can be active at the same time.
+     * - If you attempt to configure a fifth PCC pin, the function returns `false`.
+     * - The pulse count is cleared each time `readPin(pinIndex)` is called.
+     *
      * Supported trigger modes:
-     * - `ON_RISING`: counts on rising edges only (this is the default).
-     * - `ON_FALLING`: counts on falling edges only.
-     * - `ON_TOGGLE`: counts on both rising and falling edges.
-     * 
-     * Any unsupported or invalid mode will cause the function to return `false`.
-     * 
-     * @param pinIndex Terminal pin index to configure (must be between 9 and 16).
-     * @param pulseCaptureMode Trigger mode: `ON_RISING` by default.
-     * @return `true` if the pin was successfully configured; `false` otherwise.
+     * - `ON_RISING` counts rising edges only. This is the default.
+     * - `ON_FALLING` counts falling edges only.
+     * - `ON_TOGGLE` counts both rising and falling edges.
+     *
+     * Any unsupported pin, unavailable PCC channel, or invalid trigger mode causes the function to return `false`.
+     *
+     * @param pinIndex Terminal pin index to configure. Must be between 9 and 16.
+     * @param pulseCaptureMode Pulse counting trigger mode. Default is `ON_RISING`.
+     * @return `true` if the PCC trigger configuration was applied successfully; otherwise `false`.
+     *
+     * @note This function does not set the pin mode. Configure the pin first using `pinMode(pinIndex, PCC)`; this function only adjusts additional settings for a pin already configured in PCC mode.
      * 
      * @example
-     * eqsp32.configPCC(12);                  // Uses default ON_RISING
-     * eqsp32.configPCC(14, ON_FALLING);      // Falling edge counting
-     * eqsp32.configPCC(16, ON_TOGGLE);       // Both rising and falling edges
+     * @code
+     * eqsp32.pinMode(EQ_PIN_12, PCC);
+     * eqsp32.configPCC(EQ_PIN_12);              // Uses default ON_RISING
+     *
+     * eqsp32.pinMode(EQ_PIN_14, PCC);
+     * eqsp32.configPCC(EQ_PIN_14, ON_FALLING);  // Falling edge counting
+     *
+     * int pulses = eqsp32.readPin(EQ_PIN_12);   // Reads and clears accumulated count
+     * @endcode
      */
     bool configPCC(int pinIndex, EQ_TrigMode pulseCaptureMode = ON_RISING);
+
+
+    /**
+     * @brief Configures watchdog behavior for the selected supported channel.
+     *
+     * This function configures a watchdog-related setting for the selected channel.
+     * The meaning of the watchdog value depends on the channel type.
+     *
+     * Typical uses include enabling/disabling a system watchdog or setting an output
+     * watchdog timeout. A timeout value of `0` commonly disables the respective watchdog,
+     * where supported.
+     *
+     * @param pinIndex Encoded channel code.
+     * @param triggerDelay_ms Watchdog enable/timeout value in milliseconds.
+     *                        The accepted range and exact meaning are channel dependent.
+     *
+     * @return `true` if the configuration was accepted,
+     *         `false` if the channel does not support watchdog configuration,
+     *         is not available, or the value is invalid.
+     *
+     * @note Unsupported channels return `false`.
+     *
+     * @example
+     * @code
+     * // EQXRA examples:
+     *
+     * // Enable EQXRA system/software watchdog.
+     * // If the EQSP32 does not poll the EQXRA within the required time window,
+     * // all relays and analog outputs are disabled.
+     * eqsp32.configWDG(EQXRA(1, EQXRA_SYSSTAT), 1); // It is strongly recommended to NOT disable the system WDG.
+     *
+     * // Configure the shared EQXRA relay watchdog to 200 ms.
+     * // Any relay channel can be used because the relay watchdog is shared.
+     * // If no new relay command is received within 200 ms, all relays are disabled.
+     * eqsp32.configWDG(EQXRA(1, EQXRA_RL_1), 200);
+     *
+     * // Configure EQXRA AO watchdogs independently.
+     * // If no new AO command is received within the configured time,
+     * // the respective AO channel is disabled.
+     * eqsp32.configWDG(EQXRA(1, EQXRA_AO_1), 1000);
+     * eqsp32.configWDG(EQXRA(1, EQXRA_AO_2), 2000);
+     *
+     * // Disable AO1 watchdog.
+     * eqsp32.configWDG(EQXRA(1, EQXRA_AO_1), 0);
+     * @endcode
+     */
+    bool configWDG(int pinIndex, int triggerDelay_ms);
+
+
+    /**
+     * @brief Configures feedback deviation monitoring for a supported channel.
+     *
+     * This function configures a feedback-deviation guard for a channel that supports
+     * comparing a commanded value against a measured feedback value.
+     *
+     * The deviation threshold defines the allowed difference between the commanded value
+     * and the measured feedback value. The trigger delay defines how long the deviation
+     * must persist before the channel reports a deviation fault or diagnostic condition.
+     *
+     * Passing `0` for the threshold or delay commonly disables the respective part of
+     * the check, where supported. The accepted ranges and exact behavior are channel
+     * dependent.
+     *
+     * @param pinIndex Encoded channel code.
+     * @param deviationThr_mV Allowed commanded-versus-feedback deviation threshold in mV.
+     * @param triggerDelay_ms Time in milliseconds that the deviation must persist before
+     *                        it is reported.
+     *
+     * @return `true` if the configuration was accepted,
+     *         `false` if the channel does not support feedback deviation configuration,
+     *         is not available, or the value is invalid.
+     *
+     * @note Unsupported channels return `false`.
+     *
+     * @example
+     * @code
+     * // EQXRA examples:
+     *
+     * // Report AO1 feedback deviation if error exceeds 300 mV for 100 ms
+     * eqsp32.configFBDEV(EQXRA(1, EQXRA_AO_1), 300, 100);
+     *
+     * // Configure AO2 with the same feedback deviation guard
+     * eqsp32.configFBDEV(EQXRA(1, EQXRA_AO_2), 300, 100);
+     *
+     * // Disable AO1 feedback deviation monitoring
+     * eqsp32.configFBDEV(EQXRA(1, EQXRA_AO_1), 0, 0);
+     * @endcode
+     */
+    bool configFBDEV(int pinIndex, int deviationThr_mV, int triggerDelay_ms);
 
     
         // Buzzer
@@ -914,7 +1530,6 @@ public:
      * @note If the frequency is outside the valid range of 50 Hz-20 KHz, the buzzer will not be activated.
      * 
      * @example
-     * Usage example:
      * EQSP32 eqsp32;
      * eqsp32.buzzerOn(); // Activates the buzzer at the default frequency of 500 Hz, stays on indefinitely
      * delay(200);
@@ -932,7 +1547,6 @@ public:
      * especially if no duration was specified or if the buzzer needs to be turned off early.
      * 
      * @example
-     * Usage example:
      * EQSP32 eqsp32;
      * eqsp32.buzzerOn(1000, 0);  // Turns on the buzzer at 1000 Hz, remains on indefinitely
      * delay(200);
@@ -1079,18 +1693,26 @@ public:
 
 
     /**
-     * @brief Reads the output voltage provided by the EQSP32 module in millivolts.
-     * 
-     * This function measures and returns the current output voltage level being provided by the EQSP32 module. 
-     * The returned value is in millivolts (mV). This measurement is essential for monitoring the output power 
-     * status and ensuring that the module is delivering the correct voltage to connected devices or systems.
-     * The 5V output is also used as reference voltage for TIN mode.
-     * 
-     * @return The output voltage level being provided by the EQSP32 module, measured in millivolts (mV).
-     * 
+     * @brief Reads the monitored external 5V VOut rail voltage in millivolts.
+     *
+     * This function returns the voltage of the EQSP32 `5V VOut` rail, measured in millivolts (mV).
+     * `5V VOut` is the external 5V output supply available for powering connected sensors or devices; it is not the USB-C 5V supply.
+     *
+     * The `5V VOut` rail is also used as the reference voltage for modes such as `TIN` and `RAIN`.
+     *
+     * @note The external `5V VOut` rail is activated only when the EQSP32 main input supply (`VIn`) is present.
+     * If the EQSP32 is powered only from USB-C, and `VIn` is not supplied, the external `5V VOut` rail is not activated.
+     * USB-C 5V is used internally and does not power the external `5V VOut` rail.
+     * For a normal reading near 5000 mV, power the EQSP32 from `VIn` and ensure the 5V output is not overloaded or shorted.
+     *
+     * @return The measured external `5V VOut` rail voltage in millivolts (mV).
+     *
      * @example
+     * @code
      * EQSP32 eqsp32;
-     * int outputVoltage = eqsp32.readOutputVoltage();
+     *
+     * int vout_mV = eqsp32.readOutputVoltage();  // External 5V VOut rail, not USB 5V
+     * @endcode
      */
     int readOutputVoltage();
 
@@ -1129,8 +1751,6 @@ public:
      * @return true if the user button is currently pressed, false otherwise.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
      * if (eqsp32.readUserButton()) {
      *     Serial.println("User button pressed");
@@ -1142,28 +1762,29 @@ public:
 
         // RS232/RS485 serial communication
     /**
-     * @brief Configures the serial communication mode and baud rate for the EQSP32 module.
+     * @brief Configures the EQSP32 onboard serial interface mode and baud rate.
+     *
+     * This function configures the shared onboard serial interface for RS232 or RS485 operation.
+     * Use this when you want the EQSP32 library to prepare the onboard transceiver mode for the selected serial protocol.
+     *
+     * Supported serial modes:
+     * - `RS232`: Standard RS232 mode.
+     * - `RS232_INV`: Inverted RS232 mode, for devices/signals that require inverted logic.
+     * - `RS485_TX`: RS485 transmit mode.
+     * - `RS485_RX`: RS485 receive mode.
+     *
+     * @param mode Serial interface mode: `RS232`, `RS232_INV`, `RS485_TX`, or `RS485_RX`. Default is `RS232`.
+     * @param baud Serial baud rate. Default is `115200`.
+     *
+     * @return `true` if the serial configuration was applied successfully; otherwise `false`.
      * 
-     * This function sets up the EQSP32's serial communication according to the specified mode and baud rate.
-     * It supports RS232, RS485 Transmit (RS485_TX), and RS485 Receive (RS485_RX) modes. The function initializes 
-     * the serial communication with the new baud rate if it differs from the previous one, and configures 
-     * the transmission and reception control pins accordingly. The default mode is RS232, and the default baud rate is 115200.
-     * 
-     * @param mode The serial communication mode to set. Available options are RS232, RS485_TX, and RS485_RX. 
-     *        The default mode is RS232.
-     * @param baud The baud rate for serial communication. If the baud rate is different from the previous setting, 
-     *        the function reinitializes the serial communication with the new baud rate. The default baud rate is 115200.
-     * 
-     * @return true if the configuration is successful and the mode is valid, false otherwise.
-     * 
-     * @attention If no value is provided for baud, it is assumed to be 115200. So if it is needed to use for example RS485
-     *          in transmit at 9600 and then switch to receive 9600, at both times 9600 should be set in configSerial()
-     * 
+     * @attention When switching RS485 direction, pass the baud rate each time if it is not 115200.
+     *
      * @example
-     * Usage example:
-     * EQSP32 eqsp32;
-     * bool isConfigured = eqsp32.configSerial(); // Configures the module for RS232 mode at 115200 baud (default values)
-     * bool isConfiguredCustom = eqsp32.configSerial(RS485_TX, 9600); // Configures the module for RS485 Transmit mode at 9600 baud
+     * @code
+     * eqsp32.configSerial(RS232, 9600);
+     * eqsp32.configSerial(RS485_RX, 19200);
+     * @endcode
      */
     bool configSerial(EQSerialMode mode = RS232, int baud = 115200);
 
@@ -1191,7 +1812,6 @@ public:
      * @return true if the configuration is successful, false otherwise.
      * 
      * @example
-     * Usage example:
      * eqsp32.configCAN(CAN_500K);                        // Accept all messages
      * eqsp32.configCAN(CAN_125K, 0x120);                 // Accept only messages with ID 0x120
      * eqsp32.configCAN(CAN_250K, 0x000, true);           // Enable loopback (self-receive)
@@ -2311,67 +2931,62 @@ private:
 #endif
 
 /**
- * @brief EQTimer class for managing timing operations.
+ * @brief EQTimer class for non-blocking timing operations.
  * 
- * The EQTimer class provides methods to start, stop, pause, reset, and check the status of a timer.
- * It is useful for timing events and managing delays in the EQSP32 application.
+ * EQTimer provides a lightweight elapsed-time timer for periodic actions,
+ * timeouts, delays, and debounce-style logic without blocking the main loop.
+ * 
+ * A timer has an optional preset value in milliseconds. The preset is used by
+ * isElapsed() and isExpiredDisabled() to evaluate timer state.
+ * 
  */
 class EQTimer {
 public:
     /**
-     * @brief Constructs a EQTimer object with an optional preset value.
+     * @brief Constructs an EQTimer object with an optional preset value.
      * 
-     * Initializes a EQTimer object, setting an optional preset value for the timer.
-     * The timer is initially stopped.
+     * Creates a stopped timer and stores the optional preset value. The timer
+     * does not begin counting until start() is called.
      * 
-     * @param preset Optional preset value in milliseconds for the timer. Default is 0.
+     * @param preset Optional preset value in milliseconds. Default is 0.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
-     * EQTimer myTimer(5000); // Creates a EQTimer object with a 5 second preset
+     * EQTimer myTimer(5000); // Creates a stopped timer with a 5 second preset
      * @endcode
      */
     EQTimer(unsigned long preset = 0);
 
     /**
-     * @brief Starts the timer with an optional preset value.
+     * @brief Starts or resumes the timer.
      * 
      * Starts the timer if it is not already running.
-     * If a preset value is provided, it updates the timer's preset value.
+     * If the timer was paused, timing resumes from the previously accumulated elapsed time.
      * 
-     * @param preset Optional preset value in milliseconds. Default is 0.
-     * @return Returns true if the timer started successfully, otherwise returns false if the timer was already running.
+     * If a non-zero preset value is provided, it updates the timer preset before starting or resuming.
+     * Passing 0 or leaving the argument empty keeps the existing preset unchanged.
      * 
-     * @example
-     * Usage example:
+     * If resumed from pause with a new preset, the existing elapsed time is kept and compared against the new preset.
+     * If the new preset is lower than or equal to the elapsed time, isExpired() will return true immediately.
      * 
-     * @code
-     * EQTimer myTimer;
-     * bool started = myTimer.start(3000); // Starts the timer with a 3 second preset
-     * if (started) {
-     *     Serial.println("EQTimer started.");
-     * } else {
-     *     Serial.println("EQTimer was already running.");
-     * }
-     * @endcode
+     * @param preset Optional new preset value in milliseconds.
+     *               Passing 0 or leaving the argument empty keeps the current preset.
+     * @return true if the timer started or resumed successfully, false if it was already running.
      */
     bool start(unsigned long preset = 0);
 
     /**
-     * @brief Stops the timer.
+     * @brief Stops the timer and clears elapsed time.
      * 
-     * Stops the timer and resets the elapsed time.
+     * Stops the timer and resets the elapsed time to 0. The stored preset value is not changed.
+     * Starting the timer again with preset 0 or no argument uses the stored preset value.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
-     * EQTimer myTimer;
-     * myTimer.start(5000); // Start the timer
-     * delay(2000); // Wait for 2 seconds
-     * myTimer.stop(); // Stop the timer
+     * EQTimer myTimer(5000);
+     * myTimer.start();
+     * delay(2000);
+     * myTimer.stop(); // Timer is stopped and elapsed time is cleared
      * @endcode
      */ 
     void stop();
@@ -2379,18 +2994,23 @@ public:
     /**
      * @brief Pauses the timer.
      * 
-     * Pauses the timer, retaining the elapsed time. The timer can be resumed by calling `start()`.
+     * Pauses the timer and preserves the elapsed time accumulated so far.
+     * While paused, elapsed time does not increase.
+     * Calling start() resumes the timer from the paused elapsed value.
+     * 
+     * Calling start() with a new non-zero preset after pause keeps the elapsed time and uses the new preset.
+     * If the new preset is lower than or equal to the elapsed time, isExpired() will return true immediately.
+     * 
+     * Calling pause() when the timer is not running has no effect.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
-     * EQTimer myTimer;
-     * myTimer.start(5000); // Start the timer
-     * delay(2000); // Wait for 2 seconds
-     * myTimer.pause(); // Pause the timer
-     * delay(1000); // Wait for another second
-     * myTimer.start(); // Resume the timer
+     * EQTimer myTimer(5000);
+     * 
+     * myTimer.start();
+     * delay(3000);
+     * myTimer.pause();
+     * myTimer.start(2000); // Resumes with about 3000 ms elapsed, so isExpired() is immediately true
      * @endcode
      */
     void pause();
@@ -2404,8 +3024,6 @@ public:
      * @return Returns true if the timer was running and has been reset, otherwise returns false.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
      * EQTimer myTimer;
      * myTimer.start(5000); // Start the timer with a 5 second preset
@@ -2429,8 +3047,6 @@ public:
      * @return The elapsed time in milliseconds.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
      * EQTimer myTimer;
      * myTimer.start(10000); // Start the timer with a 10 second preset
@@ -2446,29 +3062,62 @@ public:
      */
     unsigned long value();
 
+
     /**
-     * @brief Checks if the timer has expired.
+     * @brief Checks whether a running timer has elapsed.
      * 
-     * Determines if the timer has reached or exceeded its preset value without stopping or resetting the timer.
-     * The timer will continue running even after it has expired.
+     * Returns true only when the timer is running, has a non-zero preset, and the elapsed time has reached or exceeded the preset.
+     * Returns false if the timer is stopped, paused, has no preset, or has not reached the preset yet.
      * 
-     * @return Returns true if the timer has reached or exceeded its preset value, otherwise returns false.
+     * If autoReset is true, the timer is reset immediately after an elapsed condition is detected.
+     * This is useful for periodic actions that should run once per timer interval.
+     * 
+     * @param autoReset When true, automatically resets the timer after returning true. Default is false.
+     * @return true if the running timer has elapsed, false otherwise.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
-     * EQTimer myTimer;
-     * myTimer.start(3000); // Start the timer with a 3 second preset
-     * delay(3500); // Wait for 3.5 seconds
-     * if (myTimer.isExpired()) {
-     *     Serial.println("EQTimer has expired.");
-     * } else {
-     *     Serial.println("EQTimer is still running.");
+     * EQTimer sampleTimer(1000);
+     * 
+     * void setup() {
+     *     sampleTimer.start();
+     * }
+     * 
+     * void loop() {
+     *     if (sampleTimer.isElapsed(true)) {
+     *         readSensors(); // Runs once every 1000 ms
+     *     }
      * }
      * @endcode
      */
-    bool isExpired();
+    bool isElapsed(bool autoReset = false);
+
+
+    /**
+     * @brief Checks whether the timer is expired or disabled.
+     * 
+     * When the timer is running and has a non-zero preset, this returns true once the elapsed time reaches or exceeds the preset.
+     * The timer continues running after it expires until stop(), pause(), or reset() is called.
+     * 
+     * If the timer is stopped, paused, or has no preset value set, it is considered disabled and this function returns true.
+     * Use isRunning() && isExpired() when you need to detect a real active timer expiration.
+     * 
+     * @return true if the timer has expired or is disabled.
+     *         Returns false only while a running timer is still below its preset value.
+     * 
+     * @example
+     * @code
+     * EQTimer myTimer(3000);
+     * myTimer.start();
+     * 
+     * if (myTimer.isRunning() && myTimer.isExpired()) {
+     *     myTimer.reset(); // Real active timer expiration
+     * }
+     * @endcode
+     */
+    bool isExpiredDisabled();       // Preferred name (previously known as isExpired())
+    bool isExpired();               // Deprecated compatibility alias
+
 
     /**
      * @brief Checks if the timer is currently running.
@@ -2479,8 +3128,6 @@ public:
      * @return Returns true if the timer is running, otherwise returns false.
      * 
      * @example
-     * Usage example:
-     * 
      * @code
      * EQTimer myTimer;
      * myTimer.start(5000); // Start the timer with a 5 second preset
@@ -2494,10 +3141,18 @@ public:
      */
     bool isRunning();
 
+/** @cond INTERNAL */
+protected:
+    virtual unsigned long virtualElapsedTime();
+    virtual unsigned long virtualMillis();
+/** @endcond */
+
 private:
     unsigned long startMillis;
     unsigned long presetValue;
     unsigned long elapsedTime;
+    unsigned long virtualStartMillis;
+    bool running;
 };
 
 
