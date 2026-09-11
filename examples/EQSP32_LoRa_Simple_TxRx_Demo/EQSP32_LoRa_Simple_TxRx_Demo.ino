@@ -67,7 +67,7 @@ EQSP32 eqsp32;
 #define LORA_SF         7
 #define LORA_CR         5
 #define LORA_SYNC       0x12
-#define LORA_POWER      10
+#define LORA_POWER      2 	// Ra-01SH-P LoRa module is used internally with max recommended power 3
 #define LORA_PREAMBLE   8
 
 #define TX_INTERVAL_MS  2000
