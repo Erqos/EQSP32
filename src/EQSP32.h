@@ -1,6 +1,7 @@
 #ifndef EQSP32_h
 #define EQSP32_h
 
+#include "EQSP32_BuildConfig.h"
 
 
 // ============================================================================
@@ -186,7 +187,9 @@
 
 
 #include <Arduino.h>
-#include <RadioLib.h>
+#if EQSP32_IOT_ENABLED
+    #include <RadioLib.h>
+#endif
 #include <string>
 
 #include "time.h"
@@ -202,9 +205,11 @@
 
 
 #ifndef EQSP32_REMOVE_NOTES         // To disable EQSP32 notes during build use {#define EQSP32_REMOVE_NOTES} before {include "EQSP32.h"}
-#warning "EQXIO NOTICE: New EQXIO firmware available. If you are using the EQXIO module, please update to latest firmware version, else the EQSP32 will reject it."
+// #warning "EQXIO NOTICE: New EQXIO firmware available. If you are using the EQXIO module, please update to latest firmware version, else the EQSP32 will reject it."
 #endif
 
+
+#if EQSP32_IOT_ENABLED
 
 #define TINY_GSM_MODEM_SIM800       // Defined the modem type used for EQX2G (SIM800)
 
@@ -234,9 +239,26 @@ class EQ_LoRaClass : public SX1262 {
 public:
   EQ_LoRaClass(Module* mod);
   int16_t begin(float freq = 868.0, float bw = 125.0, uint8_t sf = 7, uint8_t cr = 5, uint8_t syncWord = RADIOLIB_SX126X_SYNC_WORD_PRIVATE, int8_t power = 10, uint16_t preambleLength = 8);
+  int16_t begin(const ConfigLoRa_t& config) override;
+  int16_t begin(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t syncWord, int8_t power, uint16_t preambleLength, float tcxoVoltage, bool useRegulatorLDO) override;
+
+  int16_t beginFSK(const ConfigFSK_t& config) override;
+  int16_t beginFSK(float freq = 434.0, float br = 4.8, float freqDev = 5.0, float rxBw = 156.2, int8_t power = 10, uint16_t preambleLength = 16, float tcxoVoltage = 1.6, bool useRegulatorLDO = false) override;
+  int16_t beginBPSK(const ConfigBPSK_t& config) override;
+  int16_t beginBPSK(float freq = 434.0, float br = 0.6, int8_t power = 10, float tcxoVoltage = 1.6, bool useRegulatorLDO = false) override;
+  int16_t beginLRFHSS(const ConfigLRFHSS_t& config) override;
+  int16_t beginLRFHSS(float freq = 434.0, uint8_t bw = RADIOLIB_SX126X_LR_FHSS_BW_722_66, uint8_t cr = RADIOLIB_SX126X_LR_FHSS_CR_2_3, bool narrowGrid = true, int8_t power = 10, float tcxoVoltage = 1.6, bool useRegulatorLDO = false) override;
+
+  int16_t setOutputPower(int8_t power) override;
+  int16_t setOutputPower(int8_t power, bool optimize);
+  int16_t setOutputPower(int8_t power, uint8_t paDutyCycle, uint8_t hpMax, uint8_t deviceSel);
+  int16_t checkOutputPower(int8_t power, int8_t* clipped) override;
+
   int16_t reset(bool validate = true);
 };
 extern EQ_LoRaClass& eqsp32LoRa;
+
+#endif
 
 
 /**
@@ -339,6 +361,57 @@ extern EQ_LoRaClass& eqsp32LoRa;
 #define EQXAI_CHANNELS   8  // Total number of channels
 
 // ==========================
+// EQXHI - Isolated AC/DC Voltage-Presence Input Expansion Module
+// ==========================
+// Ten isolated inputs reporting whether AC or DC field voltage is present, each with a
+// frequency quality/error byte. EQXHI is input-only: it has no outputs and no
+// configurable pin modes.
+//
+// Channels 1-10 are the physical inputs. Read them with readPin(), optionally with a
+// trigger mode (STATE / ON_RISING / ON_FALLING / ON_TOGGLE). Positive logic, so 1 means
+// field voltage is present on that input.
+//
+// Channels 11-20 are virtual channels. They are not pins and have no pin mode. They exist
+// only to give readPin() an address for the frequency quality/error byte of the matching
+// input, so EQXHI_QUALITY_3 reports on EQXHI_IN_3. Decode the returned byte with
+// EQXHI_GET_FREQ_QUALITY() and EQXHI_HAS_DELAYED_FREQ_ERROR(), declared further below
+// together with the EQXHI_FREQ_QUALITY_* codes.
+//
+// Being input-only means pinValue() is always rejected, pinMode() accepts only DIN and
+// treats it as a no-op, and readMode() returns DIN for channels 1-10 and INIT_NA for the
+// virtual channels 11-20.
+#define EQXHI_IN_1          1
+#define EQXHI_IN_2          2
+#define EQXHI_IN_3          3
+#define EQXHI_IN_4          4
+#define EQXHI_IN_5          5
+#define EQXHI_IN_6          6
+#define EQXHI_IN_7          7
+#define EQXHI_IN_8          8
+#define EQXHI_IN_9          9
+#define EQXHI_IN_10         10
+
+#define EQXHI_QUALITY_1     11
+#define EQXHI_QUALITY_2     12
+#define EQXHI_QUALITY_3     13
+#define EQXHI_QUALITY_4     14
+#define EQXHI_QUALITY_5     15
+#define EQXHI_QUALITY_6     16
+#define EQXHI_QUALITY_7     17
+#define EQXHI_QUALITY_8     18
+#define EQXHI_QUALITY_9     19
+#define EQXHI_QUALITY_10    20
+
+#define EQXHI_NUM_INPUTS    10      // Physical inputs
+#define EQXHI_CHANNELS      20      // All logical channels: 10 physical inputs + 10 virtual quality channels
+
+// Frequency-monitor configuration is shared per common group; group 1 covers IN1-IN5
+// and group 2 covers IN6-IN10. These are the representative pins to pass to configFREQ(),
+// but any input pin of a group configures that entire group.
+#define EQXHI_COM_GROUP_1   EQXHI_IN_1
+#define EQXHI_COM_GROUP_2   EQXHI_IN_6
+
+// ==========================
 // EQXRA - Relay and Analog Output Expansion Module
 // ==========================
 //
@@ -414,6 +487,7 @@ extern EQ_LoRaClass& eqsp32LoRa;
 #define EQXIO_ID                0x01        // DIO module                       (Supported)
 #define EQXAI_ID                0x02        // Analog input voltage and 4-20mA  (Supported)
 // #define EQXAO_ID             0x03        // Analog output voltage and 4-20mA
+#define EQXHI_ID                0x04        // Isolated AC/DC voltage-presence input (Supported)
 
 // Input sensor modules
 // ===== Chemical / liquid sensing modules | 0x10 - 0x1F =====
@@ -429,12 +503,15 @@ extern EQ_LoRaClass& eqsp32LoRa;
 
 // IoT modules
 // #define EQXLORA_ID          0xE0      // Lora/LoraWan module
+#if EQSP32_IOT_ENABLED
 #define EQX2G_ID            0xE1      // 2G GSM/GPRS module             (Supported)
+#endif
 // ==============================================================
 
 
 #define EQXIO_MACRO(idx, pin)     (MODULE_SHIFT(EQXIO_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #define EQXAI_MACRO(idx, pin)     (MODULE_SHIFT(EQXAI_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#define EQXHI_MACRO(idx, pin)     (MODULE_SHIFT(EQXHI_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 
 #define EQXPH_MACRO(idx, pin)     (MODULE_SHIFT(EQXPH_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #define EQXTC_MACRO(idx, pin)     (MODULE_SHIFT(EQXTC_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
@@ -442,11 +519,14 @@ extern EQ_LoRaClass& eqsp32LoRa;
 
 #define EQXRA_MACRO(idx, pin)     (MODULE_SHIFT(EQXRA_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 
+#if EQSP32_IOT_ENABLED
 #define EQX2G_MACRO(idx, pin)     (MODULE_SHIFT(EQX2G_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
+#endif
 
 // Inline wrappers with default pin = 0
 inline uint32_t EQXIO(int idx, int pin = 0) { return EQXIO_MACRO(idx, pin); }
 inline uint32_t EQXAI(int idx, int pin = 0) { return EQXAI_MACRO(idx, pin); }
+inline uint32_t EQXHI(int idx, int pin = 0) { return EQXHI_MACRO(idx, pin); }
 
 inline uint32_t EQXPH(int idx, int pin = 0) { return EQXPH_MACRO(idx, pin); }
 inline uint32_t EQXTC(int idx, int pin = 0) { return EQXTC_MACRO(idx, pin); }
@@ -454,7 +534,9 @@ inline uint32_t EQXPT(int idx, int pin = 0) { return EQXPT_MACRO(idx, pin); }
 
 inline uint32_t EQXRA(int idx, int pin = 0) { return EQXRA_MACRO(idx, pin); }
 
+#if EQSP32_IOT_ENABLED
 inline uint32_t EQX2G(int idx = 1, int pin = 0) { return EQX2G_MACRO(idx, pin); }
+#endif
 
 // EQSP32 pin modes
 enum EQ_PinMode : uint8_t {
@@ -587,6 +669,60 @@ inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO
 #define EQXRA_AOUT_STATUS_AO1(status)            (((status) & EQXRA_AOUT_STATUS_AO1_MASK) >> EQXRA_AOUT_STATUS_AO1_SHIFT)
 #define EQXRA_AOUT_STATUS_AO2(status)            (((status) & EQXRA_AOUT_STATUS_AO2_MASK) >> EQXRA_AOUT_STATUS_AO2_SHIFT)
 #define EQXRA_SAOUT_APPLY(aout)                  ((aout & 0x3FFF) | 0x8000)     // Set the apply bit for Sync AOUT mode
+
+// --------------------------------------------------------------------
+//             Isolated voltage-presence input module status (EQXHI)
+// --------------------------------------------------------------------
+//              Frequency quality bits
+// Value returned by the quality channels EQXHI_QUALITY_1 - EQXHI_QUALITY_10.
+// Bits 0..2 hold the live quality code and bit 7 is the delayed frequency
+// deviation error, set once a deviation persists for the configured delay.
+// Bits 3..6 are reserved and always read zero.
+
+#define EQXHI_FREQ_QUALITY_NOT_AVAILABLE    0x00U       // No quality information for this input
+#define EQXHI_FREQ_QUALITY_ACQUIRING        0x01U       // Measurement in progress, not yet settled
+#define EQXHI_FREQ_QUALITY_BAD              0x02U
+#define EQXHI_FREQ_QUALITY_MARGINAL         0x03U
+#define EQXHI_FREQ_QUALITY_GOOD             0x04U
+#define EQXHI_FREQ_QUALITY_EXCELLENT        0x05U
+#define EQXHI_FREQ_QUALITY_NOT_MONITORED    0x06U       // Monitoring disabled and a signal is present; an unenergised input reads NOT_AVAILABLE instead
+
+#define EQXHI_FREQ_QUALITY_BASE_MASK        0x07U       // Live quality code
+#define EQXHI_FREQ_QUALITY_DELAYED_ERROR_MASK   0x80U   // Delayed frequency deviation error
+
+/**
+ * @brief Extracts the live frequency-quality code from an EQXHI quality channel read.
+ *
+ * A quality channel packs two independent pieces of information into one byte, so read the
+ * channel once and pass the same value to both helpers.
+ *
+ * @param readPinValue The value returned by `readPin()` on an EQXHI quality channel.
+ * @return One of the `EQXHI_FREQ_QUALITY_*` codes.
+ *
+ * @example
+ * @code
+ * int q = eqsp32.readPin(EQXHI(1, EQXHI_QUALITY_3));   // Quality of input IN3
+ *
+ * if (EQXHI_GET_FREQ_QUALITY(q) >= EQXHI_FREQ_QUALITY_GOOD)
+ *     Serial.println("Frequency measurement is reliable");
+ *
+ * if (EQXHI_HAS_DELAYED_FREQ_ERROR(q))
+ *     Serial.println("Frequency has deviated beyond the configured limit");
+ * @endcode
+ */
+inline uint8_t EQXHI_GET_FREQ_QUALITY(int readPinValue) { return (uint8_t)((readPinValue) & EQXHI_FREQ_QUALITY_BASE_MASK); }
+
+/**
+ * @brief Reports the delayed frequency-deviation error from an EQXHI quality channel read.
+ *
+ * The error asserts once the measured frequency has stayed outside the configured deviation
+ * for longer than the configured trigger delay. Set the target, deviation and delay with
+ * `configFREQ()`; they are shared by every input in the same common group.
+ *
+ * @param readPinValue The value returned by `readPin()` on an EQXHI quality channel.
+ * @return `true` while the delayed frequency-deviation error is asserted.
+ */
+inline bool EQXHI_HAS_DELAYED_FREQ_ERROR(int readPinValue) { return ( ((readPinValue) & EQXHI_FREQ_QUALITY_DELAYED_ERROR_MASK) != 0 ); }
 // ============================================================================
 
 enum EQ_InitStatus : uint8_t {
@@ -603,6 +739,7 @@ enum EQ_TrigMode : uint8_t {
     ON_TOGGLE
 };
 
+#if EQSP32_IOT_ENABLED
 enum EQ_WifiStatus : uint8_t {
     EQ_WF_DISCONNECTED  = 0,
     EQ_WF_CONNECTED,
@@ -631,6 +768,7 @@ enum EQ_BleStatus : uint8_t {
     EQ_BLE_SUBSCRIBED,         // BLE client connected and subscribed to notifications
     EQ_BLE_NO_INIT = 0xFF      // BLE NOT initialized or NOT managed by EQSP32 library
 };
+#endif
 
 enum EQ_WeekDay : uint8_t {
     EQ_SUNDAY = 0,
@@ -667,6 +805,7 @@ enum EQSerialMode {
 
 typedef struct
 {
+#if EQSP32_IOT_ENABLED
     std::string mqttBrokerIp = "homeassistant.local";
     int mqttBrokerPort = 1883;
     std::string mqtt_broker_ca = "";    // CA certificate (empty if not required)
@@ -678,13 +817,16 @@ typedef struct
     std::string gateway = "0.0.0.0";
     std::string subnet = "0.0.0.0";
     std::string DNS = "0.0.0.0";
+#endif
     bool relaySequencer = false;
+#if EQSP32_IOT_ENABLED
     bool mqttDiscovery = false;
     bool disableErqosIoT = false;
     bool disableNetSwitching = false;
     bool disableSystemMQTTEntities = false; // (Optional) Set to true to disable the automatic publication and update of system entities (In/Out supply voltages, heartbeat, uptime, signal strength); any of these may be implemented in the developer's code
     bool mqttAutoUpdateStateFromCommand = true; // When enabled, for every received MQTT command topic the system will automatically update/publish the received value to the corresponding state topic. When disabled, the state topic of the entity is only updated by calling the corresponding update function ex. updateControl_Switch().
     int bleBroadcastingMins = 3;        // Only if disableErqosIoT == false. BLE will broadcast for these many mins before turning off (setting to 0 makes BLE always available). If BLE turns off, pressing the BOOT button or webserver access is needed to reenable it.
+#endif
 } EQSP32Configs;
 
 
@@ -845,7 +987,8 @@ public:
      *
      * HIL allows an external tester to run the real user sketch without real sensors
      * or expansion-module inputs. The sketch remains unchanged: normal APIs such as
-     * readPin(), pinValue(), getLocalHour(), getLocalMins(), etc. are still used.
+     * readPin(), readUserButton(), pinValue(), getLocalHour(), getLocalMins(), etc.
+     * are still used.
      *
      * Call this before begin().
      *
@@ -854,16 +997,22 @@ public:
      *
      * Commands:
      * -!EQ.1=1                         Set main EQ input pin 1
+     * -!BTN=1                          Press the simulated user/BOOT button; use 0 to release
      * -!XIO.1.3=1                      Set EQXIO module 1, pin 3 input state
      * -!XAI.1.2=2450                   Set EQXAI module 1, channel 2 returned value
      * -!XTC.1.1=235                    Set EQXTC module 1, channel 1 returned value
      * -!XPT.1.1=2415                   Set EQXPT module 1, channel 1 returned value
      * -!XPH.1.1=700                    Set EQXPH module 1 pH returned value
+     * -!XHI.1.3=1                      Set EQXHI module 1, stable input channel 3 (1-10, value 0/1)
+     * -!XHI.1.12=4                     Set EQXHI module 1, quality channel 12 (11-20, EQXHI_FREQ_QUALITY_* value)
      * -!TIME=2026-06-13T08:00:00       Set ESP32 system time
+     * -!TIMERS=1000                    Advance EQTimer objects by 1000 ms
+     * -!ECHO=1                         Enable command echo; use 0 to disable
      * -!RST                            Restart the device
      *
      * Queries:
      * -?EQ.1                           Read main EQ pin 1
+     * -?BTN                            Read simulated user/BOOT button state
      * -?XAI.1.2                        Read EQXAI module 1, channel 2
      * -?TIME                           Read current system time
      * -?STATUS                         Read active HIL command/query buffer status
@@ -875,15 +1024,38 @@ public:
      * Periodic frames use #period_ms:
      * -?#500/EQ.1/XAI.1.2              Query every 500 ms
      * -!#1000/EQ.1=1                   Apply command every 1000 ms
+     * -!#250/TIMERS=750                Run EQTimer time at about 4x speed
+     * -!#1000/TIMERS=3000              Run EQTimer time at about 4x speed
+     *
+     * The periodic frame period must be greater than zero. Periods below
+     * HIL_MIN_PERIOD_MS are clamped to HIL_MIN_PERIOD_MS.
+     *
+     * TIMERS adds virtual elapsed time in milliseconds on top of real elapsed time.
+     * It affects EQTimer objects, but internal EQSP32 system timers are unaffected.
+     *
+     * The following periodic commands both simulate approximately 4x EQTimer speed,
+     * but use different sampling intervals:
+     * -!#250/TIMERS=750                250 ms sampling interval
+     * -!#1000/TIMERS=3000              1000 ms sampling interval
      *
      * Send "-!" to clear the command buffer and "-?" to clear the query buffer.
+     * 
+     * HIL overrides input and sensor values only. Output reads still return the
+     * normal EQSP32 output cache set by pinValue(). EQXRA and EQX2G are not
+     * input-injected.
      *
-     * HIL overrides input/sensor values only. Output reads still return the normal
-     * EQSP32 output cache set by pinValue(). EQXRA and EQX2G are not input-injected.
+     * BTN uses semantic button values: 1 is pressed and 0 is released. Its
+     * state starts released and remains unchanged until another BTN command or
+     * a reboot. BTN affects readUserButton() only; it does not trigger the
+     * internal BLE or network-reset BOOT-button actions.
+     *
+     * Uninitialized HIL sensor values default to -1.
      *
      * @return true if HIL mode was enabled, false if EQSP32 is not ready to enter HIL.
      */
+#if EQSP32_IOT_ENABLED
     bool beginHil();
+#endif
 
     /**
      * @brief Retrieves the current initialization status of the EQSP32 core.
@@ -920,7 +1092,14 @@ public:
 
 
     // Only for self-testing, NOT to be used by the user
+#if EQSP32_IOT_ENABLED
     void beginTest(std::string command);
+#ifdef PRODUCTION_TEST_FW
+    void beginEQXMTesting(std::string command);
+#else
+    void beginEQXMTesting(std::string command) __attribute__((error("beginEQXMTesting() requires PRODUCTION_TEST_FW. Define PRODUCTION_TEST_FW before using this function.")));
+#endif
+#endif
 
 
     /**
@@ -1020,7 +1199,9 @@ public:
      * }
      * @endcode
      */
+#if EQSP32_IOT_ENABLED
     bool isLoRaAvailable();
+#endif
 
 
     /**
@@ -1080,6 +1261,9 @@ public:
      *
      * @return `true` if the mode was applied successfully; `false` if the pin/channel is invalid, unsupported, unavailable, or the requested mode is not allowed.
      *
+     * @note Some expansion-module channels have a fixed function and cannot be reconfigured. EQXHI is one: its physical inputs accept `DIN`, which is
+     * what they already are, so the call succeeds without changing anything, and every other mode is rejected. Its virtual quality channels reject all modes.
+     *
      * @example
      * @code
      * eqsp32.pinMode(EQ_PIN_3, AIN);              // Main-unit analog input
@@ -1100,6 +1284,11 @@ public:
      *
      * @return The current `EQ_PinMode`, such as `DIN`, `AIN`, `CIN`, `PCC`, `POUT`, `AOUT`, `SAOUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `PH`, `TC`, `PT100_24W`, `PT100_3W`,
      * or `NO_MODE` if the pin/channel is invalid, unavailable, unsupported, or not configured.
+     *
+     * @note Virtual channels return `INIT_NA`. These are channels that carry a measured or diagnostic value rather than
+     * representing a physical terminal, so they have no pin mode at all. Examples are the EQXHI quality channels
+     * `EQXHI_QUALITY_1` - `EQXHI_QUALITY_10` and the EQXRA feedback and status channels such as `EQXRA_AOFB_1`,
+     * `EQXRA_RL_SUPPLY`, `EQXRA_SYSSTAT` and `EQXRA_AOSTAT`. Test for `INIT_NA`, not `NO_MODE`, when checking these.
      *
      * @example
      * @code
@@ -1138,6 +1327,8 @@ public:
      *
      * @return `true` if the output command was accepted; `false` if the pin/channel is invalid, unavailable, not configured as a supported output, or the value is outside the allowed range.
      *
+     * @note Input-only expansion modules always return `false`, since they have no outputs to command. EQXHI, EQXAI, EQXPH, EQXTC and EQXPT are input-only.
+     *
      * @example
      * @code
      * eqsp32.pinMode(EQ_PIN_5, POUT);
@@ -1170,6 +1361,8 @@ public:
      * - `TC`: thermocouple temperature in Celsius × 10, or a `TC_FAULT_*` code.
      * - `PT100_24W` / `PT100_3W`: PT100 temperature in Celsius × 100, or a `PT_FAULT_*` code.
      * - Output modes such as `POUT`, `RELAY`, `AOUT`, and `SAOUT` generally return the last commanded value; feedback/status channels may return module-specific values.
+     * - EQXHI physical inputs (`EQXHI_IN_1` - `EQXHI_IN_10`): voltage-presence state or trigger event, depending on `trigMode`. Positive logic, so 1 means field voltage is present.
+     * - EQXHI quality channels (`EQXHI_QUALITY_1` - `EQXHI_QUALITY_10`): the frequency quality/error byte of the matching input. Decode it with `EQXHI_GET_FREQ_QUALITY()` and `EQXHI_HAS_DELAYED_FREQ_ERROR()`; `trigMode` is ignored.
      *
      * @param pinIndex The EQSP32 pin index or encoded EQX channel code to read.
      * @param trigMode Trigger mode for digital input reads. Options are `STATE`, `ON_RISING`, `ON_FALLING`, and `ON_TOGGLE`. Default is `STATE`.
@@ -1177,7 +1370,8 @@ public:
      * @return The pin/channel value according to its configured mode, or `-1` if the pin/channel is invalid, unavailable, or unsupported.
      *
      * @note For `PCC`, pulse trigger behavior is configured using `configPCC()`, not the `trigMode` parameter of `readPin()`.
-     * @note When using edge trigger modes with digital inputs, each read updates the internal previous-state tracking. Reading with one trigger mode may affect the result of a later read using another trigger mode.
+     * @note Only the edge trigger modes (`ON_RISING`, `ON_FALLING`, `ON_TOGGLE`) update the internal previous-state tracking. A `STATE` read, which is the default, reports the level without moving it, so polling a pin for its value never disarms edge detection on that same pin. The edge modes share one previous-state record per pin, so reading with one edge mode still affects the result of a later read using another.
+     * @note While HIL test mode is active, EQXHI reads return the injected value directly on every channel, including the physical inputs, so `trigMode` is ignored and no edge detection runs. An injected value is treated as the already-processed result that `readPin()` should return. See `beginHil()`.
      *
      * @example
      * @code
@@ -1510,6 +1704,65 @@ public:
      */
     bool configFBDEV(int pinIndex, int deviationThr_mV, int triggerDelay_ms);
 
+    /**
+     * @brief Configures frequency-deviation monitoring for a supported channel.
+     *
+     * The target frequency defines the expected input frequency, the deviation defines how
+     * far the measured frequency may drift from it, and the trigger delay defines how long
+     * the deviation must persist before the channel reports a delayed frequency error.
+     *
+     * On EQXHI this configuration is shared per common group, so any input pin of a group
+     * configures that entire group. Group 1 covers IN1-IN5 and group 2 covers IN6-IN10.
+     * Use `EQXHI_COM_GROUP_1` and `EQXHI_COM_GROUP_2` to make that intent explicit.
+     *
+     * Passing `0` as the target selects DC expectation, otherwise the target is 25-1000 Hz.
+     * A deviation of `0` disables frequency-deviation monitoring for the group.
+     *
+     * A deviation of `0` overrides the target completely. `targetHz = 50, deviationHz = 0` is not
+     * "50 Hz with zero tolerance", it is simply off, and the group will never raise a frequency
+     * error however far the signal drifts. Deviation is whole Hz, so the tightest band is ±1 Hz.
+     * Writing `0` also clears any latched error and cancels pending trigger-delay timing immediately.
+     *
+     * The configuration is RAM-only on the module and returns to defaults after a module
+     * reset, so it must be reapplied after a reset or reconnect.
+     *
+     * @param pinIndex Encoded channel code.
+     * @param targetHz Expected frequency in whole Hz. `0` selects DC expectation.
+     * @param deviationHz Allowed deviation from the target in whole Hz. `0` disables monitoring.
+     * @param triggerDelay_ms Time in milliseconds that the deviation must persist before
+     *                        it is reported.
+     *
+     * @return `true` if the whole configuration was accepted,
+     *         `false` if the channel does not support frequency configuration,
+     *         is not available, or a value is invalid.
+     *
+     * @note Unsupported channels return `false`.
+     * @note Each value is written separately. If only part of the configuration is accepted
+     *       the function returns `false` while the accepted values remain applied, so the
+     *       call should be retried.
+     * @note On a DC group (target `0`) any nonzero deviation arms monitoring and the value
+     *       itself is not used: a qualified DC input is graded good and a periodic input bad.
+     *       A deviation of `0` still disables monitoring on a DC group.
+     *
+     * @example
+     * @code
+     * // EQXHI examples:
+     *
+     * // Report a delayed frequency error on IN1-IN5 if 50 Hz drifts by over 2 Hz for 500 ms
+     * eqsp32.configFREQ(EQXHI(1, EQXHI_COM_GROUP_1), 50, 2, 500);
+     *
+     * // Configure IN6-IN10 for 60 Hz mains with the same guard
+     * eqsp32.configFREQ(EQXHI(1, EQXHI_COM_GROUP_2), 60, 2, 500);
+     *
+     * // Any pin of a group configures that whole group, this is identical to the call above
+     * eqsp32.configFREQ(EQXHI(1, EQXHI_IN_8), 60, 2, 500);
+     *
+     * // Disable frequency monitoring on IN1-IN5
+     * eqsp32.configFREQ(EQXHI(1, EQXHI_COM_GROUP_1), 0, 0, 0);
+     * @endcode
+     */
+    bool configFREQ(int pinIndex, int targetHz, int deviationHz, int triggerDelay_ms);
+
     
         // Buzzer
     /**
@@ -1723,6 +1976,14 @@ public:
      * The button serves dual purposes depending on whether the EQSP32 IoT core
      * is enabled or disabled.
      * 
+     * Behavior when HIL is enabled:
+     * - `-!BTN=1` makes this function return `true`; `-!BTN=0` makes it return
+     *   `false`.
+     * - The simulated state is held until changed or until the device restarts;
+     *   `-?BTN` reports the current simulated state.
+     * - This override is application-facing only. It does not activate BLE or
+     *   clear network credentials through the internal BOOT-button handler.
+     *
      *Behavior when EQSP32 IoT core is ENABLED (`disableErqosIoT = false`)
      * - A short press or tap enables BLE advertising, allowing discovery and
      *   configuration via the EQConnect application.
@@ -1915,6 +2176,7 @@ public:
      *     Serial.println("Wi-Fi is not connected.");
      * }
      */
+#if EQSP32_IOT_ENABLED
     EQ_WifiStatus getWiFiStatus();
 
 
@@ -2386,6 +2648,7 @@ public:
      * Serial.println(id); // Example output: EQ_My_EQSP32
      */
     String getDeviceID();
+#endif
 
 
 
@@ -2405,6 +2668,7 @@ public:
      * EQSP32 eqsp32;
      * eqsp32.printLocalTime(); // Prints the current local time or logs an error if unavailable.
      */
+#if EQSP32_IOT_ENABLED
     void printLocalTime();
 
 
@@ -2719,6 +2983,7 @@ public:
      * }
      */
     int getLocalSecs();
+#endif
 
     /**
      * @brief Retrieves the number of full days the EQSP32 has been running since power-up.
@@ -2851,6 +3116,7 @@ public:
      * Serial.print("Current local timestamp: ");
      * Serial.println(ts);
      */
+#if EQSP32_IOT_ENABLED
     long getLocalUnixTimestamp();
 
 
@@ -2920,6 +3186,7 @@ public:
      * Serial.println(utcStr.c_str());
      */
     std::string getFormattedUnixTimestamp();
+#endif
 
 private:
     class EQ_Private;       // Forward declaration of the nested private class
@@ -3162,6 +3429,7 @@ private:
      ---   ---   ---   ---   ---   ---   ---   ---
     ***********************************************   */
 
+#if EQSP32_IOT_ENABLED
 struct SwitchEntityConfig {
     const char* entity;     /* "Unnamed" */
     const char* icon;       /* "" */
@@ -3282,6 +3550,8 @@ String readGlobal_Topic(const String& topicName);           // Read raw received
 bool   readGlobal_TopicBOOL(const String& topicName);       // Auto conversion to true/false
 float  readGlobal_TopicFLOAT(const String& topicName);      // Will try to convert the value to float
 
-bool updateGlobal_Topic(const String& topicName, const String& payload, bool retain = false);
+bool updateGlobal_Topic(const String& topicName, const String& payload, bool retain = false);   // false = nothing sent: empty topic, client refused it, or client busy for over 100 ms (broker reconnect); retry later
+
+#endif
 
 #endif
