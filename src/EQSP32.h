@@ -598,7 +598,7 @@ inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO
 // --------------------------------------------------------------------
 //              EQXAI / CIN errors
 // --------------------------------------------------------------------
-#define CIN_OC_ERROR        -1          // CIN sensor has detected an over current condition (> 21mA)
+#define CIN_OC_ERROR        -1          // CIN over-current protection is active (current above 21 mA for longer than 250 ms); the input retries automatically
 
 // --------------------------------------------------------------------
 //              TIN errors
@@ -1237,7 +1237,7 @@ public:
      * General I/O modes:
      * - `DIN`: Digital input. Used by EQSP32 main pins and supported EQX digital-input channels.
      * - `AIN`: Analog voltage input. On the EQSP32 main unit this is available on pins 1–8; also used by supported analog-input expansion modules.
-     * - `CIN`: Current input. Used by supported current-input hardware or EQX analog-input modules.
+     * - `CIN`: Current input, 0-21 mA. A current above 21 mA is tolerated for up to 250 ms, so 2-wire 4-20 mA transmitters can start through their inrush; a longer over-current triggers the protection, `readPin()` returns `CIN_OC_ERROR`, and the input retries automatically. Transmitters that signal a fault with a current above 21 mA are not supported on CIN. Also used by EQX analog-input modules.
      * - `POUT`: Power PWM output. Used by EQSP32 main pins and supported EQX output channels.
      * - `PCC`: Pulse Capture Count input. On the EQSP32 main unit this is available on pins 9–16, with up to four active PCC channels.
      *
@@ -1354,7 +1354,7 @@ public:
      * - `DIN` / `SWT`: digital state or trigger event, depending on `trigMode`.
      * - `PCC`: accumulated pulse count since the last read; reading clears the count.
      * - `AIN`: measured voltage in millivolts (mV).
-     * - `CIN`: measured current in mA × 100, or `CIN_OC_ERROR` on overcurrent.
+     * - `CIN`: measured current in mA × 100, or `CIN_OC_ERROR` while the over-current protection is active. During the 250 ms tolerance the measured value is still returned.
      * - `RAIN`: relative analog value from 0–1000, referenced to the monitored 5V VOut rail.
      * - `TIN`: temperature in Celsius × 10, or `TIN_OPEN_CIRCUIT` / `TIN_SHORT_CIRCUIT`.
      * - `PH`: pH × 100.
