@@ -3,8 +3,8 @@
  * @brief Demonstrates the EQXHI isolated AC/DC voltage-presence input expansion module.
  *
  * The EQXHI provides 10 isolated inputs that report whether field voltage is present,
- * plus a per-input frequency quality/error byte. It is an input-only module: it has no
- * outputs and no configurable pin modes.
+ * plus a per-input frequency quality/error byte and measured frequency. It is an
+ * input-only module: it has no outputs and no configurable pin modes.
  *
  * Channel Map:
  * - Channels 1-10  (`EQXHI_IN_1` .. `EQXHI_IN_10`): debounced voltage-presence state.
@@ -13,6 +13,10 @@
  *   for the matching input. Decode it with `EQXHI_GET_FREQ_QUALITY()`, which returns an
  *   `EQXHI_FREQ_QUALITY_*` code, and `EQXHI_HAS_DELAYED_FREQ_ERROR()`, which reports the
  *   delayed frequency-deviation error.
+ * - Channels 21-30 (`EQXHI_FREQ_1` .. `EQXHI_FREQ_10`): measured frequency of the matching
+ *   input in Hz x 10, refreshed every 100 ms. `CONVERT_FREQ()` returns it in Hz. A value of
+ *   0 means no valid periodic measurement: the input is absent, still acquiring, DC, or
+ *   outside the 25-1000 Hz measuring range. It does not need `configFREQ()`.
  *
  * Frequency Monitoring:
  * - `configFREQ()` sets the expected frequency, the allowed deviation, and how long a
@@ -33,7 +37,7 @@
  * Input-Only Behavior:
  * - `pinValue()` is rejected and returns false.
  * - `pinMode()` accepts DIN as a no-op and rejects every other mode.
- * - `readMode()` returns DIN for the physical input channels 1-10. Channels 11-20 are
+ * - `readMode()` returns DIN for the physical input channels 1-10. Channels 11-30 are
  *   virtual channels that exist only to address a value, so they have no pin mode.
  *
  * Hardware Setup:
@@ -47,13 +51,14 @@
  *
  * Features:
  * - Reads voltage-presence state with STATE / ON_RISING / ON_FALLING / ON_TOGGLE triggers.
+ * - Prints the measured frequency of every input.
  * - Decodes and prints the frequency quality code and the delayed frequency error flag.
  * - Configures 50 Hz mains monitoring on group 1 and DC monitoring on group 2, with a
  *   compile-time switch to expect 60 Hz mains on group 2 instead.
  * - Handles module disconnect and reconnect, reapplying the RAM-only configuration.
  *
  * @author Erqos Technologies
- * @date 2026-09-09
+ * @date 2026-09-24
  */
 
 #include <EQSP32.h>
@@ -103,6 +108,7 @@ EQSP32 eqsp32;
 // -------------------- Helpers --------------------
 bool configureEQXHI();
 void printChannelScan();
+void printFrequency(int frequency);
 void printQuality(int qualityByte);
 void demoInputOnlyBehavior();
 
@@ -233,7 +239,7 @@ void demoInputOnlyBehavior() {
 
 // -------------------- Channel Scan --------------------
 /**
- * @brief Prints the voltage-presence state and frequency quality of all 10 inputs.
+ * @brief Prints the voltage-presence state, measured frequency and frequency quality of all 10 inputs.
  */
 void printChannelScan() {
     Serial.println("\n========================================");
@@ -246,14 +252,36 @@ void printChannelScan() {
         // Channels 11-20 hold the matching frequency quality/error byte
         int quality = eqsp32.readPin(EQXHI(EQXHI_INDEX, EQXHI_QUALITY_1 + (ch - 1)));
 
+        // Channels 21-30 hold the matching measured frequency in Hz x 10
+        int frequency = eqsp32.readPin(EQXHI(EQXHI_INDEX, EQXHI_FREQ_1 + (ch - 1)));
+
         // readPin() returns -1 if a channel is unavailable, so test for 1 rather than
         // truthiness; otherwise an error would be reported as voltage present.
         const char *stateText = (state == 1) ? "🔴 VOLTAGE " : (state == 0) ? "⚫ NONE    " : "❓ ERROR   ";
 
         Serial.printf("IN%-2d  %s  ", ch, stateText);
+        printFrequency(frequency);
         printQuality(quality);
         Serial.println();
     }
+}
+
+/**
+ * @brief Prints a measured frequency read from an EQXHI frequency channel.
+ *
+ * The channel returns Hz x 10; CONVERT_FREQ() turns it into Hz. A value of 0 means there is
+ * no valid periodic measurement, which is the normal reading for an absent, DC or
+ * still-acquiring input, and the quality code tells these cases apart.
+ *
+ * @param frequency Value returned by a frequency channel read.
+ */
+void printFrequency(int frequency) {
+    if (frequency > 0)
+        Serial.printf("%7.1f Hz  ", CONVERT_FREQ(frequency));
+    else if (frequency == 0)
+        Serial.print("     -- Hz  ");
+    else
+        Serial.print("  ERROR     ");     // -1: channel unavailable
 }
 
 /**
