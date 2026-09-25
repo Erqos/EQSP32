@@ -364,22 +364,31 @@ extern EQ_LoRaClass& eqsp32LoRa;
 // EQXHI - Isolated AC/DC Voltage-Presence Input Expansion Module
 // ==========================
 // Ten isolated inputs reporting whether AC or DC field voltage is present, each with a
-// frequency quality/error byte. EQXHI is input-only: it has no outputs and no
-// configurable pin modes.
+// frequency quality/error byte and a measured frequency. EQXHI is input-only: it has no
+// outputs and no configurable pin modes.
 //
 // Channels 1-10 are the physical inputs. Read them with readPin(), optionally with a
 // trigger mode (STATE / ON_RISING / ON_FALLING / ON_TOGGLE). Positive logic, so 1 means
 // field voltage is present on that input.
 //
-// Channels 11-20 are virtual channels. They are not pins and have no pin mode. They exist
-// only to give readPin() an address for the frequency quality/error byte of the matching
-// input, so EQXHI_QUALITY_3 reports on EQXHI_IN_3. Decode the returned byte with
-// EQXHI_GET_FREQ_QUALITY() and EQXHI_HAS_DELAYED_FREQ_ERROR(), declared further below
-// together with the EQXHI_FREQ_QUALITY_* codes.
+// Channels 11-30 are virtual channels. They are not pins and have no pin mode. They exist
+// only to give readPin() an address for a value of the matching input:
+// - Channels 11-20 hold the frequency quality/error byte, so EQXHI_QUALITY_3 reports on
+//   EQXHI_IN_3. Decode the returned byte with EQXHI_GET_FREQ_QUALITY() and
+//   EQXHI_HAS_DELAYED_FREQ_ERROR(), declared further below together with the
+//   EQXHI_FREQ_QUALITY_* codes.
+// - Channels 21-30 hold the measured frequency in Hz * 10, so EQXHI_FREQ_3 reports on
+//   EQXHI_IN_3 and 500 means 50.0 Hz. Convert it with CONVERT_FREQ(). The value is
+//   refreshed every 100 ms. 0 means there is no valid periodic measurement: the input is
+//   absent, still acquiring, or DC, and the input state and quality channels tell these
+//   apart. The supported range is 25-1000 Hz. A signal too far outside it is not
+//   measured: the input reads present with quality ACQUIRING for as long as the signal
+//   lasts, and below 25 Hz its state also drops out once per cycle. Treat ACQUIRING that
+//   lasts longer than about 0.5 s, or a state that keeps toggling, as an unusable signal.
 //
 // Being input-only means pinValue() is always rejected, pinMode() accepts only DIN and
 // treats it as a no-op, and readMode() returns DIN for channels 1-10 and INIT_NA for the
-// virtual channels 11-20.
+// virtual channels 11-30.
 #define EQXHI_IN_1          1
 #define EQXHI_IN_2          2
 #define EQXHI_IN_3          3
@@ -402,8 +411,19 @@ extern EQ_LoRaClass& eqsp32LoRa;
 #define EQXHI_QUALITY_9     19
 #define EQXHI_QUALITY_10    20
 
+#define EQXHI_FREQ_1        21
+#define EQXHI_FREQ_2        22
+#define EQXHI_FREQ_3        23
+#define EQXHI_FREQ_4        24
+#define EQXHI_FREQ_5        25
+#define EQXHI_FREQ_6        26
+#define EQXHI_FREQ_7        27
+#define EQXHI_FREQ_8        28
+#define EQXHI_FREQ_9        29
+#define EQXHI_FREQ_10       30
+
 #define EQXHI_NUM_INPUTS    10      // Physical inputs
-#define EQXHI_CHANNELS      20      // All logical channels: 10 physical inputs + 10 virtual quality channels
+#define EQXHI_CHANNELS      30      // All logical channels: 10 physical inputs + 10 virtual quality + 10 virtual frequency channels
 
 // Frequency-monitor configuration is shared per common group; group 1 covers IN1-IN5
 // and group 2 covers IN6-IN10. These are the representative pins to pass to configFREQ(),
@@ -580,6 +600,7 @@ enum EQ_PinMode : uint8_t {
 #define PH_TO_PH_MULT       100.0       // PH values are in pH * 100
 #define TC_TO_C_MULT        10.0        // TC values are in C * 10
 #define PT_TO_C_MULT         100.0       // PT values are in C * 100 (higher precision temperature measurements that the other modes)
+#define FREQ_TO_HZ_MULT     10.0        // EQXHI frequency values are in Hz * 10
 
 inline float CONVERT_AIN(int readPinValue) { return ( (float)readPinValue / AIN_TO_V_MULT ); }
 inline float CONVERT_TIN(int readPinValue) { return ( (float)readPinValue / TIN_TO_C_MULT ); }
@@ -587,6 +608,7 @@ inline float CONVERT_CIN(int readPinValue) { return ( (float)readPinValue / CIN_
 inline float CONVERT_PH(int readPinValue) { return ( (float)readPinValue / PH_TO_PH_MULT ); }
 inline float CONVERT_TC(int readPinValue) { return ( (float)readPinValue / TC_TO_C_MULT ); }
 inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO_C_MULT ); }
+inline float CONVERT_FREQ(int readPinValue) { return ( (float)readPinValue / FREQ_TO_HZ_MULT ); }
 
 // ====================================
 
@@ -676,16 +698,22 @@ inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO
 //              Frequency quality bits
 // Value returned by the quality channels EQXHI_QUALITY_1 - EQXHI_QUALITY_10.
 // Bits 0..2 hold the live quality code and bit 7 is the delayed frequency
-// deviation error, set once a deviation persists for the configured delay.
+// deviation error, set once the input has been off target for the configured
+// delay (see EQXHI_HAS_DELAYED_FREQ_ERROR()).
 // Bits 3..6 are reserved and always read zero.
+//
+// With monitoring enabled, an AC input inside target +- deviation grades EXCELLENT, GOOD
+// or MARGINAL by its distance from the target and the steadiness of its period. An input
+// off target grades BAD: a frequency outside the band, DC on an AC target, or an AC signal
+// on a DC target. A DC input on a DC target grades GOOD.
 
-#define EQXHI_FREQ_QUALITY_NOT_AVAILABLE    0x00U       // No quality information for this input
-#define EQXHI_FREQ_QUALITY_ACQUIRING        0x01U       // Measurement in progress, not yet settled
-#define EQXHI_FREQ_QUALITY_BAD              0x02U
-#define EQXHI_FREQ_QUALITY_MARGINAL         0x03U
-#define EQXHI_FREQ_QUALITY_GOOD             0x04U
-#define EQXHI_FREQ_QUALITY_EXCELLENT        0x05U
-#define EQXHI_FREQ_QUALITY_NOT_MONITORED    0x06U       // Monitoring disabled and a signal is present; an unenergised input reads NOT_AVAILABLE instead
+#define EQXHI_FREQ_QUALITY_NOT_AVAILABLE    0x00U       // No quality information: the input is absent
+#define EQXHI_FREQ_QUALITY_ACQUIRING        0x01U       // Signal present but not measured yet; a signal outside the measurable range stays here
+#define EQXHI_FREQ_QUALITY_BAD              0x02U       // Off target (monitoring enabled)
+#define EQXHI_FREQ_QUALITY_MARGINAL         0x03U       // On target, near the edge of the band or with an unsteady period
+#define EQXHI_FREQ_QUALITY_GOOD             0x04U       // On target
+#define EQXHI_FREQ_QUALITY_EXCELLENT        0x05U       // On target, close to it with a steady period
+#define EQXHI_FREQ_QUALITY_NOT_MONITORED    0x06U       // Monitoring disabled, input measured or qualified DC; absent reads NOT_AVAILABLE, not yet measured reads ACQUIRING
 
 #define EQXHI_FREQ_QUALITY_BASE_MASK        0x07U       // Live quality code
 #define EQXHI_FREQ_QUALITY_DELAYED_ERROR_MASK   0x80U   // Delayed frequency deviation error
@@ -702,12 +730,14 @@ inline float CONVERT_PT(int readPinValue) { return ( (float)readPinValue / PT_TO
  * @example
  * @code
  * int q = eqsp32.readPin(EQXHI(1, EQXHI_QUALITY_3));   // Quality of input IN3
+ * uint8_t quality = EQXHI_GET_FREQ_QUALITY(q);
  *
- * if (EQXHI_GET_FREQ_QUALITY(q) >= EQXHI_FREQ_QUALITY_GOOD)
- *     Serial.println("Frequency measurement is reliable");
+ * // Compare codes for equality: NOT_MONITORED (0x06) is numerically above EXCELLENT
+ * if (quality == EQXHI_FREQ_QUALITY_GOOD || quality == EQXHI_FREQ_QUALITY_EXCELLENT)
+ *     Serial.println("Input is on target");
  *
  * if (EQXHI_HAS_DELAYED_FREQ_ERROR(q))
- *     Serial.println("Frequency has deviated beyond the configured limit");
+ *     Serial.println("Input has been off target for the configured delay");
  * @endcode
  */
 inline uint8_t EQXHI_GET_FREQ_QUALITY(int readPinValue) { return (uint8_t)((readPinValue) & EQXHI_FREQ_QUALITY_BASE_MASK); }
@@ -715,9 +745,16 @@ inline uint8_t EQXHI_GET_FREQ_QUALITY(int readPinValue) { return (uint8_t)((read
 /**
  * @brief Reports the delayed frequency-deviation error from an EQXHI quality channel read.
  *
- * The error asserts once the measured frequency has stayed outside the configured deviation
- * for longer than the configured trigger delay. Set the target, deviation and delay with
- * `configFREQ()`; they are shared by every input in the same common group.
+ * The error asserts once an input has stayed off target for the configured trigger delay:
+ * a frequency outside target ± deviation, DC on an AC target, or an AC signal on a DC
+ * target. It clears only after the input has been back on target for the same delay.
+ * Each input reports its own error; the target, deviation and delay are set per common
+ * group with `configFREQ()`.
+ *
+ * The error is kept while the input is absent or not yet measured, because neither proves
+ * that the signal came back on target. A set bit therefore does not mean the input is
+ * present now: read it together with the input state and the quality code. Changing the
+ * group's configuration, or setting its deviation to `0`, clears the error at once.
  *
  * @param readPinValue The value returned by `readPin()` on an EQXHI quality channel.
  * @return `true` while the delayed frequency-deviation error is asserted.
@@ -1005,6 +1042,7 @@ public:
      * -!XPH.1.1=700                    Set EQXPH module 1 pH returned value
      * -!XHI.1.3=1                      Set EQXHI module 1, stable input channel 3 (1-10, value 0/1)
      * -!XHI.1.12=4                     Set EQXHI module 1, quality channel 12 (11-20, EQXHI_FREQ_QUALITY_* value)
+     * -!XHI.1.23=500                   Set EQXHI module 1, frequency channel 23 (21-30, Hz * 10, 500 = 50.0 Hz)
      * -!TIME=2026-06-13T08:00:00       Set ESP32 system time
      * -!TIMERS=1000                    Advance EQTimer objects by 1000 ms
      * -!ECHO=1                         Enable command echo; use 0 to disable
@@ -1262,7 +1300,7 @@ public:
      * @return `true` if the mode was applied successfully; `false` if the pin/channel is invalid, unsupported, unavailable, or the requested mode is not allowed.
      *
      * @note Some expansion-module channels have a fixed function and cannot be reconfigured. EQXHI is one: its physical inputs accept `DIN`, which is
-     * what they already are, so the call succeeds without changing anything, and every other mode is rejected. Its virtual quality channels reject all modes.
+     * what they already are, so the call succeeds without changing anything, and every other mode is rejected. Its virtual quality and frequency channels reject all modes.
      *
      * @example
      * @code
@@ -1286,8 +1324,8 @@ public:
      * or `NO_MODE` if the pin/channel is invalid, unavailable, unsupported, or not configured.
      *
      * @note Virtual channels return `INIT_NA`. These are channels that carry a measured or diagnostic value rather than
-     * representing a physical terminal, so they have no pin mode at all. Examples are the EQXHI quality channels
-     * `EQXHI_QUALITY_1` - `EQXHI_QUALITY_10` and the EQXRA feedback and status channels such as `EQXRA_AOFB_1`,
+     * representing a physical terminal, so they have no pin mode at all. Examples are the EQXHI quality and frequency channels
+     * `EQXHI_QUALITY_1` - `EQXHI_QUALITY_10` and `EQXHI_FREQ_1` - `EQXHI_FREQ_10`, and the EQXRA feedback and status channels such as `EQXRA_AOFB_1`,
      * `EQXRA_RL_SUPPLY`, `EQXRA_SYSSTAT` and `EQXRA_AOSTAT`. Test for `INIT_NA`, not `NO_MODE`, when checking these.
      *
      * @example
@@ -1363,6 +1401,7 @@ public:
      * - Output modes such as `POUT`, `RELAY`, `AOUT`, and `SAOUT` generally return the last commanded value; feedback/status channels may return module-specific values.
      * - EQXHI physical inputs (`EQXHI_IN_1` - `EQXHI_IN_10`): voltage-presence state or trigger event, depending on `trigMode`. Positive logic, so 1 means field voltage is present.
      * - EQXHI quality channels (`EQXHI_QUALITY_1` - `EQXHI_QUALITY_10`): the frequency quality/error byte of the matching input. Decode it with `EQXHI_GET_FREQ_QUALITY()` and `EQXHI_HAS_DELAYED_FREQ_ERROR()`; `trigMode` is ignored.
+     * - EQXHI frequency channels (`EQXHI_FREQ_1` - `EQXHI_FREQ_10`): the measured frequency of the matching input in Hz × 10, refreshed every 100 ms, or `0` when there is no valid periodic measurement. Convert it with `CONVERT_FREQ()`; `trigMode` is ignored.
      *
      * @param pinIndex The EQSP32 pin index or encoded EQX channel code to read.
      * @param trigMode Trigger mode for digital input reads. Options are `STATE`, `ON_RISING`, `ON_FALLING`, and `ON_TOGGLE`. Default is `STATE`.
@@ -1709,19 +1748,29 @@ public:
      *
      * The target frequency defines the expected input frequency, the deviation defines how
      * far the measured frequency may drift from it, and the trigger delay defines how long
-     * the deviation must persist before the channel reports a delayed frequency error.
+     * the deviation must persist before the channel reports a delayed frequency error. The
+     * same delay applies on the way back: the error clears only after the input has been
+     * on target for that long.
      *
      * On EQXHI this configuration is shared per common group, so any input pin of a group
      * configures that entire group. Group 1 covers IN1-IN5 and group 2 covers IN6-IN10.
      * Use `EQXHI_COM_GROUP_1` and `EQXHI_COM_GROUP_2` to make that intent explicit.
      *
      * Passing `0` as the target selects DC expectation, otherwise the target is 25-1000 Hz.
-     * A deviation of `0` disables frequency-deviation monitoring for the group.
+     * A deviation of `0` disables frequency-deviation monitoring for the group. A signal the
+     * module cannot measure, such as one too far outside the supported range, stays
+     * `EQXHI_FREQ_QUALITY_ACQUIRING` and raises no deviation error, so watch the quality
+     * code as well as the error bit.
      *
      * A deviation of `0` overrides the target completely. `targetHz = 50, deviationHz = 0` is not
      * "50 Hz with zero tolerance", it is simply off, and the group will never raise a frequency
      * error however far the signal drifts. Deviation is whole Hz, so the tightest band is ±1 Hz.
      * Writing `0` also clears any latched error and cancels pending trigger-delay timing immediately.
+     *
+     * Changing the target, deviation or delay to a different value restarts monitoring for
+     * the whole group: its errors and pending delays clear at once, even while the signal is
+     * still off target. Writing the values already in use changes nothing, so the
+     * configuration can be reapplied without clearing an error.
      *
      * The configuration is RAM-only on the module and returns to defaults after a module
      * reset, so it must be reapplied after a reset or reconnect.
@@ -1729,10 +1778,12 @@ public:
      * @param pinIndex Encoded channel code.
      * @param targetHz Expected frequency in whole Hz. `0` selects DC expectation.
      * @param deviationHz Allowed deviation from the target in whole Hz. `0` disables monitoring.
-     * @param triggerDelay_ms Time in milliseconds that the deviation must persist before
-     *                        it is reported.
+     * @param triggerDelay_ms Time in milliseconds that the input must stay off target before
+     *                        the error is reported, and back on target before it clears,
+     *                        0 to 60000 ms. `0` makes both immediate.
      *
-     * @return `true` if the whole configuration was accepted,
+     * @return `true` if every value is valid and every write reached the module (the
+     *         module's copy is not read back),
      *         `false` if the channel does not support frequency configuration,
      *         is not available, or a value is invalid.
      *
@@ -1743,6 +1794,8 @@ public:
      * @note On a DC group (target `0`) any nonzero deviation arms monitoring and the value
      *       itself is not used: a qualified DC input is graded good and a periodic input bad.
      *       A deviation of `0` still disables monitoring on a DC group.
+     * @note The measured frequency does not depend on this configuration. Read it with
+     *       `readPin()` on `EQXHI_FREQ_1` - `EQXHI_FREQ_10`.
      *
      * @example
      * @code
