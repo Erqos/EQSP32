@@ -18,12 +18,13 @@
  *  ---------------------------------------------------------------------------
  * - begin(configs, verbose)      Start EQSP32 core, hardware, modules, and background services.
  * - begin(verbose)               Start EQSP32 with default settings.
- * - beginHil()                   Enable HIL test mode before begin().
+ * - beginHil(safeMode)           Enable HIL test mode before begin(), with safe (default) or live outputs.
  *
  *  Pin and channel I/O
  *  ---------------------------------------------------------------------------
  * - getPin(pinIndex)             Get the native ESP32 GPIO/peripheral pin for custom use.
  * - pinMode(pinIndex, mode)      Set the mode of a main-unit pin or EQX channel.
+ * - pinName(pinIndex, name)      Name a main-unit pin or EQX channel for EQMonitor.
  * - readMode(pinIndex)           Read the current mode of a main-unit pin or EQX channel.
  * - pinValue(pinIndex, value)    Set an output value for a configured output pin or channel.
  * - readPin(pinIndex, trigMode)  Read a digital, analog, sensor, counter, output, or status value.
@@ -37,7 +38,8 @@
  * - configTIN(pin, A, B, C)      Set TIN conversion using Steinhart-Hart coefficients.
  * - configTIN(pin, nA, nB, nC, refR) Set TIN conversion using normalized Steinhart-Hart coefficients.
  * - configRELAY(pin, hold, delay) Set relay hold power and derate timing.
- * - configPCC(pin, trigMode)     Set pulse-counting edge behavior.
+ * - configPCC(pin, trigMode, clearOnRead)  Set the pulse-counting edge and whether readPin() clears the count.
+ * - configQENC(pin, format, reverse)   Set what a QENC pair reads (encoder resolution, or a pulse format) and its count direction.
  * - configWDG(pin, delay)        Configure watchdog behavior for supported channels.
  * 
  *  Industrial communication
@@ -206,6 +208,7 @@
 
 #ifndef EQSP32_REMOVE_NOTES         // To disable EQSP32 notes during build use {#define EQSP32_REMOVE_NOTES} before {include "EQSP32.h"}
 // #warning "EQXIO NOTICE: New EQXIO firmware available. If you are using the EQXIO module, please update to latest firmware version, else the EQSP32 will reject it."
+#warning "EQXRA NOTICE: New EQXRA firmware available. If you are using the EQXRA module, please update to latest firmware version."
 #endif
 
 
@@ -558,6 +561,9 @@ inline uint32_t EQXRA(int idx, int pin = 0) { return EQXRA_MACRO(idx, pin); }
 inline uint32_t EQX2G(int idx = 1, int pin = 0) { return EQX2G_MACRO(idx, pin); }
 #endif
 
+// Maximum UTF-8 name text, excluding its terminating zero.
+#define EQ_PIN_NAME_MAX_BYTES 64
+
 // EQSP32 pin modes
 enum EQ_PinMode : uint8_t {
     NO_MODE = 0xFF,
@@ -567,7 +573,7 @@ enum EQ_PinMode : uint8_t {
     DOUT,               // N/A (Do NOT use)
     AIN,                //
     CIN,                // Current input mode, returns mA x 100
-    PCC,                // Pulse Capture Counter mode, counted pulses are cleared on each readPin() call for the respective pin
+    PCC,                // Pulse Capture Counter mode, counted pulses are cleared on each readPin() call for the respective pin, unless configPCC() sets clearOnRead to false
     POUT,               //
     AOUT,               // EQXRA (EQX Modules)  | 0 mV - 10000 mV (value range)
 
@@ -577,6 +583,7 @@ enum EQ_PinMode : uint8_t {
     RELAY,              // Special POUT mode, starts with set power and after set time drops to holding power
     RAIN,               // Relative analog input, this returns a value of 0-1000 representing the % of read value versus the VOut reference voltage
     SAOUT,              // EQXRA (EQX Modules)  | 0 mV - 10000 mV (value range) | Sync AOUT, special AOUT mode; Sync with the local AOUT grouped channels, ex. in EQXRA if AO1 is in SAOUT, then AO2 is also in SAOUT
+    QENC,               // Quadrature encoder, special pulse counter mode on a terminal pair (A on 9, 11, 13 or 15, B on the next terminal); readPin() returns the signed position, which reading does not clear
 
     PH      = 0x10,     // pH measurement       (EQX Modules)
     TC,                 // thermocouple         (EQX Modules)
@@ -776,6 +783,15 @@ enum EQ_TrigMode : uint8_t {
     ON_TOGGLE
 };
 
+// Formats of a QENC terminal pair for configQENC(): what the two terminals carry
+enum EQ_QencResolution : int {
+    QENC_X1 = 1,            // Encoder signals A and B: one count per signal period
+    QENC_X2 = 2,            // Encoder signals A and B: two counts per signal period
+    QENC_X4 = 4,            // Encoder signals A and B: four counts per signal period, every edge of A and B (default)
+    QENC_PULSE_DIR = 10,    // Pulses on the first terminal, direction on the second (high counts up): one count per pulse
+    QENC_UP_DOWN = 11       // Pulses on the first terminal count up, pulses on the second count down: one count per pulse
+};
+
 #if EQSP32_IOT_ENABLED
 enum EQ_WifiStatus : uint8_t {
     EQ_WF_DISCONNECTED  = 0,
@@ -954,8 +970,8 @@ public:
     /**
      * @brief Initializes the EQSP32 core and starts required background services.
      *
-     * This function MUST be called once at the beginning of your application before using
-     * any other EQSP32 APIs.
+     * Call this once before using hardware I/O and runtime services. pinName()
+     * can register names before begin(); beginHil() must select HIL before begin().
      *
      * What `begin()` does (high level):
      * - Initializes internal drivers and peripherals used by the library (I/O, comms, etc.).
@@ -1027,13 +1043,28 @@ public:
      * readPin(), readUserButton(), pinValue(), getLocalHour(), getLocalMins(), etc.
      * are still used.
      *
-     * Call this before begin().
+     * Call this before begin(). A call after begin() is refused and changes nothing.
+     *
+     * Output mode, selected here and fixed until reboot:
+     * - beginHil() or beginHil(true)   Safe: the real outputs stay off. The sketch runs as usual and
+     *                                  readPin() on an output returns the value the sketch set.
+     * - beginHil(false)                Live: the outputs switch as in a normal run.
+     *
+     * Safe mode covers the main unit terminals in POUT and RELAY mode, the EQXIO pins in POUT
+     * and RELAY mode, and the EQXRA relays and analog outputs. A pin that the sketch drives
+     * itself after getPin() is not covered. The EQXRA status and feedback channels stay real
+     * measurements: in safe mode the feedback voltage reads the real output, 0 V.
+     *
+     * Forcing from EQMonitor (see readPin()) is not available in a HIL run, safe or live: the HIL
+     * has control of the pin values, and EQMonitor's force commands are refused with the HIL mode
+     * as the reason.
      *
      * In HIL mode, test data is sent over USB Serial using text frames terminated by
      * newline:
      *
      * Commands:
      * -!EQ.1=1                         Set main EQ input pin 1
+     * -!EQ.9=1234                      Set the position of an encoder pair in QENC mode (either pin of the pair, negative values allowed)
      * -!BTN=1                          Press the simulated user/BOOT button; use 0 to release
      * -!XIO.1.3=1                      Set EQXIO module 1, pin 3 input state
      * -!XAI.1.2=2450                   Set EQXAI module 1, channel 2 returned value
@@ -1089,10 +1120,11 @@ public:
      *
      * Uninitialized HIL sensor values default to -1.
      *
-     * @return true if HIL mode was enabled, false if EQSP32 is not ready to enter HIL.
+     * @param safeMode true (default) selects the safe output mode, false selects the live output mode.
+     * @return true if HIL mode was enabled, false if begin() was already called.
      */
 #if EQSP32_IOT_ENABLED
-    bool beginHil();
+    bool beginHil(bool safeMode = true);
 #endif
 
     /**
@@ -1249,7 +1281,36 @@ public:
      * It supports mapping for ADIO pins, RS232, RS485, and CAN bus pins. For ADIO pins, it sets the pin mode to CUSTOM.
      * For serial communication pins (RS232 and RS485), it configures the hardware appropriately to support the respective RS232 or RS485 protocol.
      * For CAN pins, it returns the native ESP32 pin mapped on the CAN driver and deinitializes the CAN peripheral. It is up to the user to initialize the CAN peripheral based on their needs.
-     * 
+     *
+     * Continuous (DMA) ADC sampling on an ADIO pin: terminals 1-8 are ESP32-S3 ADC1 channels, and the library itself
+     * uses ADC1 for its analog pin modes and for the supply monitoring. An application that starts the ADC in continuous
+     * mode (the `adc_digi_*` API) therefore takes ADC1 from the library. The library detects it and releases ADC1 for the
+     * rest of the run: it stops every internal ADC read, switches every terminal 1-8 in `AIN`, `RAIN`, `CIN`, `TIN` and, on
+     * hardware v1.2, `DIN` to `CUSTOM` (they read `-1`; a `CIN` shunt leaves the circuit), stops the supply monitoring
+     * (`readInputVoltage()` and `readOutputVoltage()` return `-1`) and keeps the under/over-voltage flags as they were.
+     * Nothing resumes when the DMA stops; a reboot restores normal operation. One system message announces the release
+     * when verbose output is enabled. One-shot reads (`analogRead()`, `adc1_get_raw()`) on a `CUSTOM` pin do not trigger
+     * this and work alongside the library.
+     *
+     * Start the continuous capture from `setup()`, `loop()` or a task running on core 1, where the library's system
+     * manager also runs. A start issued from a task on core 0 can overlap one of the library's own ADC reads in time,
+     * and a read that lands inside `adc_digi_start()` leaves the capture frozen until the application stops and
+     * restarts the driver. From core 1 the library detects the start before it can read, so the capture comes up clean.
+     *
+     * Pulse-counter hardware (PCNT) in your own code: terminals 9-16 can feed the four PCNT units of the ESP32-S3, and
+     * the library uses those units for its `PCC` pins and `QENC` pairs, one each, from unit 3 downward. Your own PCNT
+     * code (the `pcnt_*` API, or an encoder library built on it) can run next to them on a `getPin()` terminal:
+     * - Use a unit that no `PCC` pin or `QENC` pair uses. The library never takes a unit your code has already set
+     *   up. If your code sets up a unit that a `PCC` pin or a `QENC` pair is using, the library releases that pin or
+     *   pair: it becomes `DIN`, with one system message when verbose output is enabled, and the unit stays as your
+     *   code set it.
+     * - A unit your code has set up counts as in use until your code switches its count modes off (`pcnt_set_mode()`
+     *   with `PCNT_COUNT_DIS` for both edges of each channel it used). Until then the library has one counter fewer.
+     * - Read your counter by polling. The PCNT interrupt has one owner. While any pin is in `PCC` or `QENC` it is the
+     *   library's, and `pcnt_isr_service_install()` or `pcnt_isr_register()` fails. If your code installs the
+     *   interrupt first, `pinMode()` returns `false` for `PCC` and `QENC`. The library gives the interrupt back when
+     *   its last `PCC` pin or `QENC` pair is released.
+     *
      * @param pinIndex The index of the EQSP32 pin (e.g., EQ_RS232_TX, EQ_RS485_RX).
      * Master/Slave and Expansion module masks are handled automatically.
      * @return The corresponding ESP32 pin number if the pin is valid, or -1 if the pin index does not match any known configuration.
@@ -1278,6 +1339,7 @@ public:
      * - `CIN`: Current input, 0-21 mA. A current above 21 mA is tolerated for up to 250 ms, so 2-wire 4-20 mA transmitters can start through their inrush; a longer over-current triggers the protection, `readPin()` returns `CIN_OC_ERROR`, and the input retries automatically. Transmitters that signal a fault with a current above 21 mA are not supported on CIN. Also used by EQX analog-input modules.
      * - `POUT`: Power PWM output. Used by EQSP32 main pins and supported EQX output channels.
      * - `PCC`: Pulse Capture Count input. On the EQSP32 main unit this is available on pins 9–16, with up to four active PCC channels.
+     * - `QENC`: Quadrature encoder input on a terminal pair of the EQSP32 main unit. Set it on pin 9, 11, 13 or 15 (signal A); the next pin (signal B) is taken automatically and reports `QENC` as well. Any other pin returns `false`. The four hardware pulse counters are shared with `PCC`, so the call returns `false` when none is free. Setting another mode on either pin of the pair releases the encoder and leaves the other pin in `DIN`. See `configQENC()`.
      *
      * Special I/O modes:
      * - `SWT`: Debounced digital input. Call `configSWT()` after `pinMode()`.
@@ -1301,6 +1363,7 @@ public:
      *
      * @note Some expansion-module channels have a fixed function and cannot be reconfigured. EQXHI is one: its physical inputs accept `DIN`, which is
      * what they already are, so the call succeeds without changing anything, and every other mode is rejected. Its virtual quality and frequency channels reject all modes.
+     * @note A mode change ends a force from EQMonitor on that pin (see `readPin()`), on both pins of a `QENC` pair. `pinMode()` is never refused because of a force, and a call with the mode the pin already has keeps the force.
      *
      * @example
      * @code
@@ -1312,6 +1375,44 @@ public:
      */
     bool pinMode(int pinIndex, EQ_PinMode mode, int freq = 500);
 
+    /**
+     * @brief Sets a sketch-defined name for a main-unit or EQX pin.
+     *
+     * Uses the same pin identifiers as pinMode(): 1-16, EQ_PIN_n, or an EQX
+     * family/instance/channel code. Only physical pins take a name: the 16
+     * main-unit terminals and the pins of the seven I/O module families (for
+     * example EQXHI pins 1-10, EQXRA relays 1-8 and analog outputs 9-10).
+     * Virtual channels, such as the EQXHI quality and frequency channels or the
+     * EQXRA feedback and status channels, are refused.
+     * Names are independent of the pin mode and copied into a shared library
+     * table in RAM, like the pin state. They remain until replaced; reboot
+     * starts with no names. No name is written to flash or to a module.
+     *
+     * Optionally call once per named pin in setup(), before or after begin().
+     * Leave out the call for pins that need no name. A valid module pin can be named before it is
+     * discovered or while disconnected. Module identity uses the instance number
+     * within its family, as the EQX macros do, not its physical chain position.
+     * Mode changes and reconnects keep names. Each terminal of a QENC pair has
+     * its own name. Remote slave pins and getPin()-only peripheral pins are not supported.
+     *
+     * @param pinIndex Main-unit pin or encoded EQX channel identifier.
+     * @param name Null-terminated UTF-8 text, at most EQ_PIN_NAME_MAX_BYTES (64)
+     *             bytes excluding the terminating zero. Text must not be empty.
+     * @return true if accepted. false for an invalid identifier, null pointer, empty text,
+     *         invalid UTF-8, control characters, oversized text, or allocation
+     *         failure. Rejection retains the previous name; text is never truncated.
+     *
+     * @note Available in full and Lite builds. In the full build EQConnect can
+     *       request names separately; names are not part of periodic telemetry.
+     *
+     * @code
+     * eqsp32.pinName(EQ_PIN_3, "Tank level");
+     * eqsp32.pinName(EQXIO(1, 3), "Pump 1");
+     * eqsp32.pinName(EQXRA(2, EQXRA_AO_1), "Valve demand");
+     * @endcode
+     */
+    bool pinName(int pinIndex, const char* name);
+
 
     /**
      * @brief Reads the current mode of an EQSP32 main-unit pin or supported EQX expansion-module channel.
@@ -1320,7 +1421,7 @@ public:
      *
      * @param pinIndex The EQSP32 pin index or encoded EQX channel code to check.
      *
-     * @return The current `EQ_PinMode`, such as `DIN`, `AIN`, `CIN`, `PCC`, `POUT`, `AOUT`, `SAOUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `PH`, `TC`, `PT100_24W`, `PT100_3W`,
+     * @return The current `EQ_PinMode`, such as `DIN`, `AIN`, `CIN`, `PCC`, `QENC` (on both pins of an encoder pair), `POUT`, `AOUT`, `SAOUT`, `SWT`, `TIN`, `RELAY`, `RAIN`, `PH`, `TC`, `PT100_24W`, `PT100_3W`,
      * or `NO_MODE` if the pin/channel is invalid, unavailable, unsupported, or not configured.
      *
      * @note Virtual channels return `INIT_NA`. These are channels that carry a measured or diagnostic value rather than
@@ -1360,12 +1461,17 @@ public:
      * - `SAOUT`: synchronized analog output target voltage in millivolts, typically 0–10000 mV on supported EQX analog-output modules.
      * - Digital or relay-style EQX outputs: 0 means OFF; non-zero means ON, where supported. PWM-capable EQX outputs use the mode-specific value range.
      *
+     * Two input modes also take a value:
+     * - `PCC` with a running total (`configPCC()` with `clearOnRead` set to `false`): `value` sets the total, 0 to zero it or any preset from 0 to 2,147,483,647. A negative value returns `false`. On a `PCC` pin in the default read-and-clear setting the function returns `false`.
+     * - `QENC`: `value` sets the encoder position of the terminal pair, 0 to zero it or a preset within the range of the selected resolution (see `configQENC()`). Either terminal of the pair can be used.
+     *
      * @param pinIndex The EQSP32 pin index or encoded EQX output channel code.
      * @param value The output command value. Valid range depends on the configured output mode/channel.
      *
      * @return `true` if the output command was accepted; `false` if the pin/channel is invalid, unavailable, not configured as a supported output, or the value is outside the allowed range.
      *
      * @note Input-only expansion modules always return `false`, since they have no outputs to command. EQXHI, EQXAI, EQXPH, EQXTC and EQXPT are input-only.
+     * @note Forcing from EQMonitor (see `readPin()`): while an output (`POUT`, `RELAY`, an EQXIO output, an EQXRA relay or analog output) is forced, it keeps the forced value, with the relay pick-up and hold as usual. `pinValue()` on it still returns `true` and the value is remembered; the last value the sketch set goes out when the force ends. A force ends when it is released in EQMonitor, when EQMonitor disconnects, when the pin's mode changes, and at a restart; it is never stored.
      *
      * @example
      * @code
@@ -1378,6 +1484,10 @@ public:
      *
      * eqsp32.pinMode(EQXRA(1, EQXRA_AO_1), AOUT);
      * eqsp32.pinValue(EQXRA(1, EQXRA_AO_1), 5000); // 5.000 V analog output target
+     *
+     * eqsp32.pinMode(EQ_PIN_12, PCC);
+     * eqsp32.configPCC(EQ_PIN_12, ON_RISING, false);
+     * eqsp32.pinValue(EQ_PIN_12, 0);               // Zero the running pulse total
      * @endcode
      */
     bool pinValue(int pinIndex, int value);
@@ -1390,7 +1500,8 @@ public:
      *
      * Return values by mode:
      * - `DIN` / `SWT`: digital state or trigger event, depending on `trigMode`.
-     * - `PCC`: accumulated pulse count since the last read; reading clears the count.
+     * - `PCC`: accumulated pulse count since the last read; reading clears the count. With `configPCC()` and `clearOnRead` set to `false` it is a running total instead, which reading does not clear (see `configPCC()`).
+     * - `QENC`: the quadrature encoder position of the terminal pair, read from either terminal, as a signed count that reading does not clear. Here `-1` is a valid position, not an error (see `configQENC()`).
      * - `AIN`: measured voltage in millivolts (mV).
      * - `CIN`: measured current in mA × 100, or `CIN_OC_ERROR` while the over-current protection is active. During the 250 ms tolerance the measured value is still returned.
      * - `RAIN`: relative analog value from 0–1000, referenced to the monitored 5V VOut rail.
@@ -1411,6 +1522,8 @@ public:
      * @note For `PCC`, pulse trigger behavior is configured using `configPCC()`, not the `trigMode` parameter of `readPin()`.
      * @note Only the edge trigger modes (`ON_RISING`, `ON_FALLING`, `ON_TOGGLE`) update the internal previous-state tracking. A `STATE` read, which is the default, reports the level without moving it, so polling a pin for its value never disarms edge detection on that same pin. The edge modes share one previous-state record per pin, so reading with one edge mode still affects the result of a later read using another.
      * @note While HIL test mode is active, EQXHI reads return the injected value directly on every channel, including the physical inputs, so `trigMode` is ignored and no edge detection runs. An injected value is treated as the already-processed result that `readPin()` should return. See `beginHil()`.
+     * @note If the application runs the ESP32-S3 ADC in continuous (DMA) mode, the library releases ADC1 to it until reboot (see `getPin()`): terminals 1-8 in `AIN`, `RAIN`, `CIN`, `TIN` and, on hardware v1.2, `DIN` are switched to `CUSTOM` and read `-1` from then on. Note that `-1` is non-zero, so test for it explicitly on a digital input.
+     * @note Forcing from EQMonitor (EQConnect app): a person at the machine can force a main-unit terminal or a module pin to a value and release it again while the sketch runs, as on a PLC. While an input is forced, `readPin()` returns the forced value in the units of its mode, and edge reads see the forced level. The real input keeps being read, and counters keep counting, so after the release `readPin()` continues from the real state. A forced `PCC` total is not cleared by reading. While an output is forced, `readPin()` returns the value the output has, the forced one. Forcing is not available in a HIL run (see `beginHil()`) or in the Lite library.
      *
      * @example
      * @code
@@ -1617,7 +1730,7 @@ public:
 
 
     /**
-     * @brief Configures the trigger behavior for a pin already set to PCC (Pulse Capture Count) mode.
+     * @brief Configures the trigger behavior and the read behavior for a pin already set to PCC (Pulse Capture Count) mode.
      *
      * PCC mode counts input pulses on selected EQSP32 terminal pins (9–16) using hardware-level pulse counters. Before calling this function, the pin must first be configured as PCC:
      *     eqsp32.pinMode(pinIndex, PCC);
@@ -1626,33 +1739,100 @@ public:
      * - Only terminal pins 9 through 16 support PCC mode.
      * - A maximum of four PCC pins can be active at the same time.
      * - If you attempt to configure a fifth PCC pin, the function returns `false`.
-     * - The pulse count is cleared each time `readPin(pinIndex)` is called.
      *
      * Supported trigger modes:
      * - `ON_RISING` counts rising edges only. This is the default.
      * - `ON_FALLING` counts falling edges only.
      * - `ON_TOGGLE` counts both rising and falling edges.
      *
-     * Any unsupported pin, unavailable PCC channel, or invalid trigger mode causes the function to return `false`.
+     * Read behavior, selected by `clearOnRead`:
+     * - `true` (default): `readPin(pinIndex)` returns the pulses counted since the last read and clears the count. Up to 250,000,000 unread pulses are kept.
+     * - `false`: `readPin(pinIndex)` returns a running total and does not clear it, so the pin can be read from several places. The total counts from 0 to 2,147,483,647 and then restarts from 0; it is never negative. `pinValue(pinIndex, value)` zeroes or presets it.
+     *
+     * With a running total, a reading lower than the previous one means the total has restarted: the pulses since the previous reading are then `current - previous + 2147483648`. Read at least once within one full range (about 2 h 23 min at 250 kHz, about 25 days at 1 kHz) so that a restart is never missed.
+     *
+     * Any unsupported pin, a pin that is not in PCC mode, or an invalid trigger mode causes the function to return `false`.
      *
      * @param pinIndex Terminal pin index to configure. Must be between 9 and 16.
      * @param pulseCaptureMode Pulse counting trigger mode. Default is `ON_RISING`.
-     * @return `true` if the PCC trigger configuration was applied successfully; otherwise `false`.
+     * @param clearOnRead `true` (default) to clear the count on each `readPin()`; `false` to keep a running total.
+     * @return `true` if the PCC configuration was applied successfully; otherwise `false`.
      *
      * @note This function does not set the pin mode. Configure the pin first using `pinMode(pinIndex, PCC)`; this function only adjusts additional settings for a pin already configured in PCC mode.
-     * 
+     * @note Every call sets both settings: a call without `clearOnRead` selects read-and-clear again. Changing `clearOnRead` does not change the count; it carries on from where it is.
+     * @note The four hardware pulse counters are shared with `QENC` pairs, and with your own PCNT code if the application has any: see `getPin()` for the rule.
+     *
      * @example
      * @code
      * eqsp32.pinMode(EQ_PIN_12, PCC);
-     * eqsp32.configPCC(EQ_PIN_12);              // Uses default ON_RISING
+     * eqsp32.configPCC(EQ_PIN_12);              // Uses default ON_RISING, read-and-clear
      *
      * eqsp32.pinMode(EQ_PIN_14, PCC);
      * eqsp32.configPCC(EQ_PIN_14, ON_FALLING);  // Falling edge counting
      *
      * int pulses = eqsp32.readPin(EQ_PIN_12);   // Reads and clears accumulated count
+     *
+     * eqsp32.pinMode(EQ_PIN_16, PCC);
+     * eqsp32.configPCC(EQ_PIN_16, ON_RISING, false);    // Running total, not cleared by reading
+     * int total = eqsp32.readPin(EQ_PIN_16);    // Total since the start, or since the last pinValue()
+     * eqsp32.pinValue(EQ_PIN_16, 0);            // Zero the total
      * @endcode
      */
-    bool configPCC(int pinIndex, EQ_TrigMode pulseCaptureMode = ON_RISING);
+    bool configPCC(int pinIndex, EQ_TrigMode pulseCaptureMode = ON_RISING, bool clearOnRead = true);
+
+    /**
+     * @brief Configures what a terminal pair already set to QENC (quadrature encoder) mode reads, and its count direction.
+     *
+     * QENC mode reads an incremental encoder with two signals, A and B, a quarter period apart, on a fixed pair of EQSP32 terminals: 9/10, 11/12, 13/14 or 15/16. The mode is set on the first terminal of the pair, which is A; the next terminal becomes B automatically:
+     *     eqsp32.pinMode(EQ_PIN_9, QENC);
+     *
+     * Reading and setting the position:
+     * - `readPin()` on either terminal of the pair returns the position as a signed count. Reading does not clear it.
+     * - `pinValue()` on either terminal sets the position: 0 to zero it, or any other value within the range of the selected resolution as a preset.
+     * - The position wraps around. With `QENC_X4` it uses the full signed 32-bit range, -2,147,483,648 to 2,147,483,647, and the difference of two readings stays correct across the wrap. With `QENC_X2` it runs from -1,073,741,824 to 1,073,741,823 and with `QENC_X1` from -536,870,912 to 536,870,911. At every resolution the wrap is 2,147,483,648 signal edges away from zero.
+     * - In this mode `-1` is a valid position, not an error code. Nothing can fail once the pair is in QENC, so check the return values of `pinMode()` and `configQENC()` instead.
+     *
+     * Resolution, in counts per signal period:
+     * - `QENC_X4` (4, default): every edge of A and of B counts.
+     * - `QENC_X2` (2) and `QENC_X1` (1): the same count divided by 2 or by 4, counted from the point where the position was last set.
+     * A change of resolution rescales the reported position. A change of direction keeps the count so far and counts the other way from then on.
+     *
+     * Two pulse formats, for devices that are not encoders, on the same terminal pairs. One count per pulse, on its rising edge; the position uses the full signed 32-bit range:
+     * - `QENC_PULSE_DIR`: pulses on the first terminal of the pair, a direction level on the second. Direction high counts up, low counts down. Stepper drives and some sensors give this signal.
+     * - `QENC_UP_DOWN`: pulses on the first terminal count up, pulses on the second terminal count down.
+     * `readPin()`, `pinValue()` and `reverse` work as for an encoder. A change between an encoder setting and a pulse format keeps the reported position.
+     *
+     * Hardware limitations:
+     * - Only the terminal pairs 9/10, 11/12, 13/14 and 15/16, with QENC set on terminal 9, 11, 13 or 15.
+     * - The four hardware pulse counters are shared with PCC: every PCC pin in use leaves one encoder fewer, and the other way round. Up to four encoders with no PCC pin.
+     * - Setting another mode on either terminal of the pair releases the encoder; the other terminal becomes `DIN`.
+     * - Your own PCNT code, if the application has any, uses the same hardware counters: see `getPin()` for the rule.
+     *
+     * @param pinIndex Either terminal of a pair that is in QENC mode.
+     * @param format For an encoder, the counts per signal period: `QENC_X1`, `QENC_X2` or `QENC_X4` (the numbers 1, 2 and 4 work as well). For the pulse formats: `QENC_PULSE_DIR` or `QENC_UP_DOWN`. Default is `QENC_X4`.
+     * @param reverse `false` (default): A leading B counts up. `true`: B leading A counts up.
+     * @return `true` if the configuration was applied; `false` if the pair is not in QENC mode or the format is not one of the five values above.
+     *
+     * @note This function does not set the pin mode. Set the pair first using `pinMode(pinIndex, QENC)`.
+     * @note Every call sets both the format and the direction. `configQENC(pinIndex, QENC_X2)` therefore also sets `reverse` back to `false`.
+     * @note Power the EQSP32 through VIn before pulses arrive on the pair. This ensures safe voltage levels on the pins and reliable counts.
+     *
+     * @example
+     * @code
+     * eqsp32.pinMode(EQ_PIN_9, QENC);              // Terminal 9 = A, terminal 10 = B
+     * eqsp32.configQENC(EQ_PIN_9, QENC_X4, false); // Optional: 4 counts per signal period, direction not reversed
+     * eqsp32.configQENC(EQ_PIN_11, 2);             // The plain number works as well: 2 counts per signal period
+     *
+     * eqsp32.pinMode(EQ_PIN_13, QENC);
+     * eqsp32.configQENC(EQ_PIN_13, QENC_PULSE_DIR); // Not an encoder: pulses on terminal 13, direction on terminal 14
+     * eqsp32.pinMode(EQ_PIN_15, QENC);
+     * eqsp32.configQENC(EQ_PIN_15, QENC_UP_DOWN);   // Not an encoder: up pulses on terminal 15, down pulses on terminal 16
+     *
+     * int position = eqsp32.readPin(EQ_PIN_9);     // Signed position, not cleared by reading
+     * eqsp32.pinValue(EQ_PIN_9, 0);                // Zero the position
+     * @endcode
+     */
+    bool configQENC(int pinIndex, int format = QENC_X4, bool reverse = false);
 
 
     /**
@@ -1686,12 +1866,14 @@ public:
      *
      * // Configure the shared EQXRA relay watchdog to 200 ms.
      * // Any relay channel can be used because the relay watchdog is shared.
-     * // If no new relay command is received within 200 ms, all relays are disabled.
+     * // If no relay command is received within 200 ms, all relays are disabled.
+     * // Every successful pinValue() on a relay channel counts, even one that repeats the current value.
      * eqsp32.configWDG(EQXRA(1, EQXRA_RL_1), 200);
      *
      * // Configure EQXRA AO watchdogs independently.
-     * // If no new AO command is received within the configured time,
-     * // the respective AO channel is disabled.
+     * // If no AO command is received within the configured time,
+     * // the respective AO channel is disabled. Every successful pinValue() on
+     * // that channel counts, even one that repeats the current value.
      * eqsp32.configWDG(EQXRA(1, EQXRA_AO_1), 1000);
      * eqsp32.configWDG(EQXRA(1, EQXRA_AO_2), 2000);
      *
@@ -1989,7 +2171,8 @@ public:
      * This function retrieves the current input voltage level supplied to the EQSP32 module and returns the value in millivolts (mV).
      * Monitoring the input voltage is crucial for understanding the power supply status and ensuring the module is operating within safe voltage limits.
      * 
-     * @return The input voltage level supplied to the EQSP32 module, measured in millivolts (mV).
+     * @return The input voltage level supplied to the EQSP32 module, measured in millivolts (mV), or `-1` once the
+     * library has released ADC1 to the application (see `getPin()`): the supply is then no longer monitored until reboot.
      *
      * @example
      * EQSP32 eqsp32;
@@ -2011,7 +2194,8 @@ public:
      * USB-C 5V is used internally and does not power the external `5V VOut` rail.
      * For a normal reading near 5000 mV, power the EQSP32 from `VIn` and ensure the 5V output is not overloaded or shorted.
      *
-     * @return The measured external `5V VOut` rail voltage in millivolts (mV).
+     * @return The measured external `5V VOut` rail voltage in millivolts (mV), or `-1` once the library has released
+     * ADC1 to the application (see `getPin()`): the supply is then no longer monitored until reboot.
      *
      * @example
      * @code
