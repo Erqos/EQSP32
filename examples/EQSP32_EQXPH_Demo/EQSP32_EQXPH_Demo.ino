@@ -17,6 +17,7 @@
  * Features:
  * - Reads EQXPH module and converts (hundredths of pH) to pH sensor data.
  * - Displays the pH value with two decimal precision.
+ * - Reports a reading outside pH 0–14 (PH_FAULT_BELOW_RANGE / PH_FAULT_ABOVE_RANGE), which points to the calibration or the probe.
  *
  * @author Erqos Technologies
  * @date 2025-08-05
@@ -48,7 +49,11 @@ void loop() {
     if (eqsp32.isModuleDetected(EQXPH(EQXPH_MODULE))) {
         int value = eqsp32.readPin(EQXPH(EQXPH_MODULE, 1));
         Serial.printf("🧪 pH Reading: ");
-        if (value < 0) {
+        if (value == PH_FAULT_BELOW_RANGE) {
+            Serial.println("below pH 0, check the calibration and the probe");
+        } else if (value == PH_FAULT_ABOVE_RANGE) {
+            Serial.println("above pH 14, check the calibration and the probe (normal for the first seconds after start-up)");
+        } else if (value < 0) {
             Serial.println("Error");
         } else {
             // Converts (hundredths of pH) to pH sensor data

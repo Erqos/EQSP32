@@ -30,12 +30,17 @@
  * - Validates LoRa availability using `eqsp32.isLoRaAvailable()`.
  * - Uses RadioLib-style return codes for initialization, transmit, and receive status.
  * - Enables LoRa CRC for basic packet integrity checking.
- * - Non-blocking TX timing using `millis()`.
+ * - Non-blocking TX timing using the library's `EQTimer`.
  * - FreeRTOS-friendly loop pacing using `delay(10)`.
  *
  * Notes:
- * - The default frequency in this example is 868 MHz. Verify that the selected frequency,
- *   transmit power, duty cycle, and antenna setup comply with local radio regulations.
+ * - Radio rules: this example uses 868.1 MHz and sends one message every 10 s. In the EU,
+ *   the 868.0-868.6 MHz band allows a device to transmit at most 1 % of the time (36 s per hour).
+ *   One message of this example takes about 60 ms on air, so one every 10 s uses about 0.6 %.
+ *   Sending more often, longer messages, or a higher spreading factor (longer airtime) can
+ *   exceed the limit. Outside the EU, use the band and rules of your region (for example
+ *   915 MHz in the US). Verify that the selected frequency, transmit power, duty cycle, and
+ *   antenna setup comply with local radio regulations.
  * - Both TX and RX devices must be configured with matching LoRa parameters.
  * - This example is intended for basic point-to-point LoRa testing only; it does not implement
  *   addressing, acknowledgements, retries, encryption, or packet framing.
@@ -62,7 +67,7 @@ EQSP32 eqsp32;
 #endif
 
 
-#define LORA_FREQ       868.0
+#define LORA_FREQ       868.1   // MHz, inside the EU 868.0-868.6 MHz band (see Notes)
 #define LORA_BW         125.0
 #define LORA_SF         7
 #define LORA_CR         5
@@ -70,10 +75,10 @@ EQSP32 eqsp32;
 #define LORA_POWER      2 	// Ra-01SH-P LoRa module is used internally with max recommended power 3
 #define LORA_PREAMBLE   8
 
-#define TX_INTERVAL_MS  2000
+#define TX_INTERVAL_MS  10000   // One message every 10 s: about 0.6 % airtime, under the EU 1 % limit
 
 uint32_t txCounter = 0;
-uint32_t lastTxMs = 0;
+EQTimer txTimer(TX_INTERVAL_MS);    // Paces the transmissions
 
 void setup() {
   Serial.begin(115200);
@@ -111,6 +116,8 @@ void setup() {
 
 #if defined(DEMO_MODE_TX)
   Serial.println("Mode: TX");
+  Serial.printf("Sending one message every %d s.\n", TX_INTERVAL_MS / 1000);
+  txTimer.start();
 #elif defined(DEMO_MODE_RX)
   Serial.println("Mode: RX");
 #else
@@ -123,8 +130,7 @@ void setup() {
 void loop() {
 #if defined(DEMO_MODE_TX)
 
-  if (millis() - lastTxMs >= TX_INTERVAL_MS) {
-    lastTxMs = millis();
+  if (txTimer.isElapsed(true)) {    // true: the timer starts the next period at once
 
     char message[48];
     snprintf(message, sizeof(message), "Hello from EQSP32 #%lu", (unsigned long)txCounter++);
