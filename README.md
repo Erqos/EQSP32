@@ -18,9 +18,21 @@ facilitating the rapid development and deployment of IIoT solutions.
 
 ## Installation
 
+The EQSP32 library needs the **RadioLib** library, version **7.7.x**. Without RadioLib, the build stops with `RadioLib.h: No such file or directory`.
+
+The EQSP32 library is built with RadioLib 7.7.1. Keep RadioLib at 7.7.x: with another version (7.8 or newer) the onboard LoRa radio may not work. Programs that do not use LoRa are not affected.
+
+### From the Arduino IDE Library Manager
+
+1. In your Arduino IDE, go to Sketch > Include Library > Manage Libraries... and search for **EQSP32**.
+2. Click Install. When the IDE asks to install the missing dependencies, click **Install all**. This installs RadioLib 7.7.x with the EQSP32 library.
+
+### From a .ZIP file
+
 1. Download the latest release of the EQSP32 library from the GitHub repository.
 2. In your Arduino IDE, go to Sketch > Include Library > Add .ZIP Library... and select the downloaded file.
-3. Restart the Arduino IDE to see the library in the list of available libraries.
+3. A .ZIP install does not add RadioLib. Go to Sketch > Include Library > Manage Libraries..., search for **RadioLib**, select version **7.7.1** and click Install.
+4. Restart the Arduino IDE to see the library in the list of available libraries.
 
 ## Quick Start Guide
 

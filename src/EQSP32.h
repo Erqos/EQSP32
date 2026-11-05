@@ -546,7 +546,9 @@ extern EQ_LoRaClass& eqsp32LoRa;
 #define EQX2G_MACRO(idx, pin)     (MODULE_SHIFT(EQX2G_ID) | (MODULE_IDX_SHIFT(idx & 0x0F)) | (pin & PIN_MASK))        // (EQX Modules)
 #endif
 
-// Inline wrappers with default pin = 0
+// Inline wrappers with default pin = 0. Modules are numbered from 1 per type, in scan order.
+// Pin 0 addresses the module itself, as isModuleDetected() takes it; readPin(), pinValue() and pinMode()
+// need the channel, for example EQXPH(1, EQXPH_PH_1), EQXTC(1, EQXTC_CH_1) or EQXPT(1, EQXPT_M_1).
 inline uint32_t EQXIO(int idx, int pin = 0) { return EQXIO_MACRO(idx, pin); }
 inline uint32_t EQXAI(int idx, int pin = 0) { return EQXAI_MACRO(idx, pin); }
 inline uint32_t EQXHI(int idx, int pin = 0) { return EQXHI_MACRO(idx, pin); }
@@ -654,6 +656,18 @@ inline float CONVERT_FREQ(int readPinValue) { return ( (float)readPinValue / FRE
 #define PT_FAULT_RTDIN_LOW  0x800008    // PT sensor M- or I- open, or damaged RTD sensor   (Open or damaged circuit)
 #define PT_FAULT_OVUV       0x800004    // PT sensor Over/Under voltage             (Voltage error)
 #define IS_PT_VALID(value) (((value) & 0xFF800000) != 0x800000)      // Macro to check if a PT sensor value is valid (we check error bit or if negative temperature)
+
+// --------------------------------------------------------------------
+//              PH range (EQXPH)
+// --------------------------------------------------------------------
+// A pH probe gives no reading outside pH 0-14, so these mean "check the calibration and the probe", not a
+// specific fault: a shorted or open probe usually reads near pH 7. The module also reads above range for the
+// first seconds after it starts.
+#define PH_RANGE_MIN            0           // pH 0.00, as readPin() reports it (pH x 100)
+#define PH_RANGE_MAX            1400        // pH 14.00, as readPin() reports it (pH x 100)
+#define PH_FAULT_BELOW_RANGE    -9999       // Reading below PH_RANGE_MIN
+#define PH_FAULT_ABOVE_RANGE    9999        // Reading above PH_RANGE_MAX
+#define IS_PH_VALID(value) ((value) >= PH_RANGE_MIN && (value) <= PH_RANGE_MAX)       // Also false for readPin()'s -1
 
 // --------------------------------------------------------------------
 //             Relay and analog output module errors (EQXRA)
@@ -860,8 +874,8 @@ typedef struct
 {
 #if EQSP32_IOT_ENABLED
     std::string mqttBrokerIp = "homeassistant.local";
-    int mqttBrokerPort = 1883;
-    std::string mqtt_broker_ca = "";    // CA certificate (empty if not required)
+    int mqttBrokerPort = 1883;          // 1883: plain MQTT. 8883: MQTT over TLS
+    std::string mqtt_broker_ca = "";    // CA certificate (PEM) for port 8883. Empty on 8883: the link is encrypted, but the broker's certificate is not checked
     std::string devSystemID = "";        // Developer system ID (assigned by the system's developer, hardcoded by developer, READ ONLY access by external app)
     std::string userDevName = "";        // Device name (assigned by the end user, default value assigned on first flash, user has READ/WRITE access)
     std::string wifiSSID = "";          // (Optional) Default network SSID
@@ -925,7 +939,7 @@ class EQ_Private;       // Forward declaration of the nested private class
  *     // MQTT broker configuration (defaults shown)
  *     configs.mqttBrokerIp   = "homeassistant.local";
  *     configs.mqttBrokerPort = 1883;
- *     configs.mqtt_broker_ca = "";              // Optional CA certificate (empty if not required)
+ *     configs.mqtt_broker_ca = "";              // Optional CA certificate for port 8883 (empty: encrypted, broker not verified)
  *
  *     // Device identity (optional)
  *     configs.devSystemID = "SYSTEM_ID";        // Developer/system identifier
@@ -1286,7 +1300,7 @@ public:
      * uses ADC1 for its analog pin modes and for the supply monitoring. An application that starts the ADC in continuous
      * mode (the `adc_digi_*` API) therefore takes ADC1 from the library. The library detects it and releases ADC1 for the
      * rest of the run: it stops every internal ADC read, switches every terminal 1-8 in `AIN`, `RAIN`, `CIN`, `TIN` and, on
-     * hardware v1.2, `DIN` to `CUSTOM` (they read `-1`; a `CIN` shunt leaves the circuit), stops the supply monitoring
+     * hardware v1.2, `DIN` and `SWT` to `CUSTOM` (they read `-1`; a `CIN` shunt leaves the circuit), stops the supply monitoring
      * (`readInputVoltage()` and `readOutputVoltage()` return `-1`) and keeps the under/over-voltage flags as they were.
      * Nothing resumes when the DMA stops; a reboot restores normal operation. One system message announces the release
      * when verbose output is enabled. One-shot reads (`analogRead()`, `adc1_get_raw()`) on a `CUSTOM` pin do not trigger
@@ -1343,7 +1357,7 @@ public:
      *
      * Special I/O modes:
      * - `SWT`: Debounced digital input. Call `configSWT()` after `pinMode()`.
-     * - `TIN`: NTC temperature input. On the EQSP32 main unit this is available on pins 1–8. Call `configTIN()` after `pinMode()`. `readPin()` returns Celsius × 10.
+     * - `TIN`: NTC temperature input. On the EQSP32 main unit this is available on pins 1–8. `pinMode()` sets the default thermistor (Beta 3435, 10 kΩ); for another one call `configTIN()` after `pinMode()`. `readPin()` returns Celsius × 10.
      * - `RELAY`: Relay-optimized POUT mode. Call `configRELAY()` after `pinMode()`.
      * - `RAIN`: Relative analog input. On the EQSP32 main unit this is available on pins 1–8 and returns 0–1000 relative to 5V VOut.
      *
@@ -1506,7 +1520,7 @@ public:
      * - `CIN`: measured current in mA × 100, or `CIN_OC_ERROR` while the over-current protection is active. During the 250 ms tolerance the measured value is still returned.
      * - `RAIN`: relative analog value from 0–1000, referenced to the monitored 5V VOut rail.
      * - `TIN`: temperature in Celsius × 10, or `TIN_OPEN_CIRCUIT` / `TIN_SHORT_CIRCUIT`.
-     * - `PH`: pH × 100.
+     * - `PH`: pH × 100 from `PH_RANGE_MIN` (0) to `PH_RANGE_MAX` (1400), or `PH_FAULT_BELOW_RANGE` / `PH_FAULT_ABOVE_RANGE` for a reading outside pH 0-14: check the calibration and the probe (the module also reads above range for the first seconds after it starts). Test with `IS_PH_VALID()`.
      * - `TC`: thermocouple temperature in Celsius × 10, or a `TC_FAULT_*` code.
      * - `PT100_24W` / `PT100_3W`: PT100 temperature in Celsius × 100, or a `PT_FAULT_*` code.
      * - Output modes such as `POUT`, `RELAY`, `AOUT`, and `SAOUT` generally return the last commanded value; feedback/status channels may return module-specific values.
@@ -1519,10 +1533,11 @@ public:
      *
      * @return The pin/channel value according to its configured mode, or `-1` if the pin/channel is invalid, unavailable, or unsupported.
      *
+     * @note An expansion-module channel needs its channel number: `EQXPH(1, EQXPH_PH_1)`, `EQXTC(1, EQXTC_CH_1)`, `EQXPT(1, EQXPT_M_1)`. `EQXPH(1)` alone addresses the module, not a channel, and `readPin()` returns `-1` for it. Module numbers start at 1.
      * @note For `PCC`, pulse trigger behavior is configured using `configPCC()`, not the `trigMode` parameter of `readPin()`.
      * @note Only the edge trigger modes (`ON_RISING`, `ON_FALLING`, `ON_TOGGLE`) update the internal previous-state tracking. A `STATE` read, which is the default, reports the level without moving it, so polling a pin for its value never disarms edge detection on that same pin. The edge modes share one previous-state record per pin, so reading with one edge mode still affects the result of a later read using another.
      * @note While HIL test mode is active, EQXHI reads return the injected value directly on every channel, including the physical inputs, so `trigMode` is ignored and no edge detection runs. An injected value is treated as the already-processed result that `readPin()` should return. See `beginHil()`.
-     * @note If the application runs the ESP32-S3 ADC in continuous (DMA) mode, the library releases ADC1 to it until reboot (see `getPin()`): terminals 1-8 in `AIN`, `RAIN`, `CIN`, `TIN` and, on hardware v1.2, `DIN` are switched to `CUSTOM` and read `-1` from then on. Note that `-1` is non-zero, so test for it explicitly on a digital input.
+     * @note If the application runs the ESP32-S3 ADC in continuous (DMA) mode, the library releases ADC1 to it until reboot (see `getPin()`): terminals 1-8 in `AIN`, `RAIN`, `CIN`, `TIN` and, on hardware v1.2, `DIN` and `SWT` are switched to `CUSTOM` and read `-1` from then on. Note that `-1` is non-zero, so test for it explicitly on a digital input.
      * @note Forcing from EQMonitor (EQConnect app): with the PLC force function, a person at the machine can force a main-unit terminal or a module pin to a value and release it again while the sketch runs. While an input is forced, `readPin()` returns the forced value in the units of its mode, and edge reads see the forced level. The real input keeps being read, and counters keep counting, so after the release `readPin()` continues from the real state. A forced `PCC` total is not cleared by reading. While an output is forced, `readPin()` returns the value the output has, the forced one. Forcing is not available in a HIL run (see `beginHil()`) or in the Lite library.
      *
      * @example
@@ -1532,6 +1547,7 @@ public:
      * int voltage_mV   = eqsp32.readPin(EQ_PIN_2);              // AIN in mV
      * int temp_raw     = eqsp32.readPin(EQ_PIN_3);              // TIN in Celsius × 10
      * int pulseCount   = eqsp32.readPin(EQ_PIN_12);             // PCC count, clears after read
+     * int ph_x100      = eqsp32.readPin(EQXPH(1, EQXPH_PH_1));  // First EQXPH, pH x 100, or PH_FAULT_BELOW_RANGE / PH_FAULT_ABOVE_RANGE
      *
      * float temperature_C = CONVERT_TIN(temp_raw);
      * @endcode
@@ -1555,7 +1571,9 @@ public:
      * - Relay (RELAY)
      * 
      * @attention All pins in POUT or special POUT mode share the same POUT frequency.
-     * 
+     *
+     * @attention Call it in setup(), before setting any POUT values, to ensure proper operation.
+     *
      * @param freq The PWM frequency to set for the Power PWM Output (POUT) mode. By default the frequency is set to 1000 Hz.
      * 
      * @return true if the configuration is successful, false otherwise. Returns false if the provided frequency is outside the valid range (50 Hz to 3000 Hz).
@@ -1854,6 +1872,8 @@ public:
      *         is not available, or the value is invalid.
      *
      * @note Unsupported channels return `false`.
+     * @note On EQXRA the module keeps this setting in RAM only. The library keeps it and sends
+     *       it again when the module answers after a disconnect or a module reset.
      *
      * @example
      * @code
@@ -1908,6 +1928,8 @@ public:
      *         is not available, or the value is invalid.
      *
      * @note Unsupported channels return `false`.
+     * @note On EQXRA the module keeps this setting in RAM only. The library keeps it and sends
+     *       it again when the module answers after a disconnect or a module reset.
      *
      * @example
      * @code
@@ -1955,7 +1977,8 @@ public:
      * configuration can be reapplied without clearing an error.
      *
      * The configuration is RAM-only on the module and returns to defaults after a module
-     * reset, so it must be reapplied after a reset or reconnect.
+     * reset. The library keeps it and sends it again when the module answers after a
+     * disconnect or a module reset.
      *
      * @param pinIndex Encoded channel code.
      * @param targetHz Expected frequency in whole Hz. `0` selects DC expectation.
@@ -2696,6 +2719,9 @@ public:
      * to connect to the configured MQTT broker. When disabled, the EQSP32 will ignore MQTT and will not attempt
      * connections.
      *
+     * With the Erqos IoT core disabled (`disableErqosIoT` in `EQSP32Configs`), this call does nothing: MQTT does
+     * not run in that mode, and the stored settings are left as they are.
+     *
      * @param mqttUserName MQTT username to store (may be empty).
      * @param mqttPassword MQTT password to store (may be empty).
      * @param enableMqtt   Enables or disables MQTT auto-connection behavior (persisted to flash).
@@ -2724,6 +2750,9 @@ public:
      * This overload updates only the MQTT enabled state without modifying stored MQTT credentials.
      * The `enableMqtt` value is stored in flash and applied after reset. When enabled, the EQSP32 will
      * attempt MQTT connections; when disabled, it will ignore MQTT and will not attempt to connect.
+     *
+     * With the Erqos IoT core disabled (`disableErqosIoT` in `EQSP32Configs`), this call does nothing: MQTT does
+     * not run in that mode, and the stored settings are left as they are.
      *
      * @param enableMqtt Enables (`true`) or disables (`false`) MQTT auto-connection behavior (persisted to flash).
      */
@@ -2803,7 +2832,7 @@ public:
      * 
      * The device name is internally applied in:
      * - BLE advertising and identification (takes effect only after reboot)
-     * - Web server hostname (access via `http://DeviceName.home:8000`, where spaces from DeviceName are replaced with dashes and special characters are removed)
+     * - Web server hostname: access via `http://DeviceName.local:8000` (answered by the unit itself, mDNS, while the IoT core is on), via `http://DeviceName.home:8000` where the router uses .home, or via the IP address. Spaces from DeviceName are replaced with dashes and special characters are removed. After a device name change, a restart of the device might be needed
      * - Arduino OTA (used as the OTA target name)
      * - Home Assistant auto-discovery (used as the device name in the discovered MQTT device)
      * 

@@ -4,12 +4,12 @@
 
 EQSP32	KEYWORD1
 EQSP32Configs	KEYWORD1
-EQTimer		KEYWORD1
+EQTimer	KEYWORD1
 EQ_LoRaClass	KEYWORD1
 CanMessage	KEYWORD1
 EQSerialMode	KEYWORD1
 EQ_PinMode	KEYWORD1
-EQ_TrigMode   	KEYWORD1
+EQ_TrigMode	KEYWORD1
 EQ_WeekDay	KEYWORD1
 EQ_WifiStatus	KEYWORD1
 EQ_EthernetStatus	KEYWORD1
@@ -17,6 +17,7 @@ EQ_MQTTBrokerStatus	KEYWORD1
 EQ_BleStatus	KEYWORD1
 CanBitRates	KEYWORD1
 EQ_InitStatus	KEYWORD1
+EQ_QencResolution	KEYWORD1
 
 
 
@@ -26,7 +27,7 @@ EQ_InitStatus	KEYWORD1
 EQ_USER_SPI	KEYWORD2
 
 eqsp32LoRa	KEYWORD2
-eqx2gStream    KEYWORD2
+eqx2gStream	KEYWORD2
 eqx2gSerial	KEYWORD2
 bleStream	KEYWORD2
 bleSerial	KEYWORD2
@@ -38,7 +39,7 @@ bleSerial	KEYWORD2
 
 # Initialization
 beginHil	KEYWORD2
-begin		KEYWORD2
+begin	KEYWORD2
 
 # Begin status
 initStatus	KEYWORD2
@@ -47,12 +48,12 @@ initStatus	KEYWORD2
 readUserButton	KEYWORD2
 
 # Pin Usage and Configuration
-pinMode		KEYWORD2
-pinName		KEYWORD2
+pinMode	KEYWORD2
+pinName	KEYWORD2
 readMode	KEYWORD2
 pinValue	KEYWORD2
-readPin		KEYWORD2
-getPin		KEYWORD2
+readPin	KEYWORD2
+getPin	KEYWORD2
 configPOUTFreq	KEYWORD2
 configPOUT	KEYWORD2
 configSWT	KEYWORD2
@@ -63,25 +64,25 @@ configQENC	KEYWORD2
 configWDG	KEYWORD2
 configFBDEV	KEYWORD2
 configFREQ	KEYWORD2
-isModuleDetected KEYWORD2
+isModuleDetected	KEYWORD2
 isLoRaAvailable	KEYWORD2
 
 
 # Connectivity Functions
-getWiFiStatus		KEYWORD2
+getWiFiStatus	KEYWORD2
 getEthernetStatus	KEYWORD2
-getMQTTStatus		KEYWORD2
-getBleStatus		KEYWORD2
-isDeviceOnline		KEYWORD2
-localIP			KEYWORD2
-ethernetIP		KEYWORD2
-wifiIP			KEYWORD2
+getMQTTStatus	KEYWORD2
+getBleStatus	KEYWORD2
+isDeviceOnline	KEYWORD2
+localIP	KEYWORD2
+ethernetIP	KEYWORD2
+wifiIP	KEYWORD2
 
 startWiFi	KEYWORD2
 stopWiFi	KEYWORD2
 clearWiFi	KEYWORD2
 startBle	KEYWORD2
-stopBle		KEYWORD2
+stopBle	KEYWORD2
 updateMQTT	KEYWORD2
 
 # Power Supply Monitoring
@@ -136,19 +137,19 @@ getFormattedLocalTime	KEYWORD2
 getUnixTimestamp	KEYWORD2
 getFormattedUnixTimestamp	KEYWORD2
 
-getUptimeDays    KEYWORD2
-getUptimeHours   KEYWORD2
-getUptimeMinutes KEYWORD2
-getUptimeSeconds KEYWORD2
-printUptime      KEYWORD2
+getUptimeDays	KEYWORD2
+getUptimeHours	KEYWORD2
+getUptimeMinutes	KEYWORD2
+getUptimeSeconds	KEYWORD2
+printUptime	KEYWORD2
 
 # LED Control Functions
-setBleLed        KEYWORD2
-resetBleLed      KEYWORD2
-toggleBleLed     KEYWORD2
-setWifiLed       KEYWORD2
-resetWifiLed     KEYWORD2
-toggleWifiLed    KEYWORD2
+setBleLed	KEYWORD2
+resetBleLed	KEYWORD2
+toggleBleLed	KEYWORD2
+setWifiLed	KEYWORD2
+resetWifiLed	KEYWORD2
+toggleWifiLed	KEYWORD2
 
 
 # Helper Functions
@@ -171,13 +172,13 @@ EQX2G	KEYWORD2
 EQXRA	KEYWORD2
 EQXHI	KEYWORD2
 
-CONVERT_AIN          KEYWORD2
-CONVERT_TIN          KEYWORD2
-CONVERT_CIN          KEYWORD2
-CONVERT_PH           KEYWORD2
-CONVERT_TC           KEYWORD2
-CONVERT_PT           KEYWORD2
-CONVERT_FREQ         KEYWORD2
+CONVERT_AIN	KEYWORD2
+CONVERT_TIN	KEYWORD2
+CONVERT_CIN	KEYWORD2
+CONVERT_PH	KEYWORD2
+CONVERT_TC	KEYWORD2
+CONVERT_PT	KEYWORD2
+CONVERT_FREQ	KEYWORD2
 
 # EQXRA helper macros
 EQXRA_AOUT_STATUS_AO1	KEYWORD2
@@ -219,9 +220,9 @@ EQ_RS485_RX	LITERAL1
 EQ_RS485_EN	LITERAL1
 EQ_CAN_TX	LITERAL1
 EQ_CAN_RX	LITERAL1
-EQ_RS485_2_TX   LITERAL1
-EQ_RS485_2_RX   LITERAL1
-EQ_RS485_2_EN   LITERAL1
+EQ_RS485_2_TX	LITERAL1
+EQ_RS485_2_RX	LITERAL1
+EQ_RS485_2_EN	LITERAL1
 
 NO_MODE	LITERAL1
 CUSTOM	LITERAL1
@@ -229,7 +230,7 @@ INIT_NA	LITERAL1
 DIN	LITERAL1
 AIN	LITERAL1
 CIN	LITERAL1
-PCC	LITERAL1          
+PCC	LITERAL1
 POUT	LITERAL1
 AOUT	LITERAL1
 SWT	LITERAL1
@@ -243,7 +244,7 @@ TC	LITERAL1
 PT100_24W	LITERAL1
 PT100_3W	LITERAL1
 
-STATE		LITERAL1
+STATE	LITERAL1
 ON_RISING	LITERAL1
 ON_FALLING	LITERAL1
 ON_TOGGLE	LITERAL1
@@ -254,21 +255,64 @@ QENC_X4	LITERAL1
 QENC_PULSE_DIR	LITERAL1
 QENC_UP_DOWN	LITERAL1
 
-RS232		LITERAL1
+RS232	LITERAL1
 RS232_INV	LITERAL1
 RS485_TX	LITERAL1
 RS485_RX	LITERAL1
 
+INIT_NOT_STARTED	LITERAL1
+INIT_STARTED	LITERAL1
+INIT_OK	LITERAL1
+INIT_ERROR	LITERAL1
+
+EQ_WF_DISCONNECTED	LITERAL1
+EQ_WF_CONNECTED	LITERAL1
+EQ_WF_RECONNECTING	LITERAL1
+EQ_WF_SCANNING	LITERAL1
+
+EQ_ETH_DISCONNECTED	LITERAL1
+EQ_ETH_CONNECTED	LITERAL1
+EQ_ETH_PLUGGED_IN	LITERAL1
+EQ_ETH_STOPPED	LITERAL1
+
+EQ_MQTT_DISCONNECTED	LITERAL1
+EQ_MQTT_CONNECTED	LITERAL1
+EQ_MQTT_CONNECTING	LITERAL1
+EQ_MQTT_NO_INIT	LITERAL1
+
+EQ_BLE_DISCONNECTED	LITERAL1
+EQ_BLE_CONNECTED	LITERAL1
+EQ_BLE_ADVERTISING	LITERAL1
+EQ_BLE_SUBSCRIBED	LITERAL1
+EQ_BLE_NO_INIT	LITERAL1
+
+EQ_SUNDAY	LITERAL1
+EQ_MONDAY	LITERAL1
+EQ_TUESDAY	LITERAL1
+EQ_WEDNESDAY	LITERAL1
+EQ_THURSDAY	LITERAL1
+EQ_FRIDAY	LITERAL1
+EQ_SATURDAY	LITERAL1
+
+CAN_25K	LITERAL1
+CAN_50K	LITERAL1
+CAN_100K	LITERAL1
+CAN_125K	LITERAL1
+CAN_250K	LITERAL1
+CAN_500K	LITERAL1
+CAN_800K	LITERAL1
+CAN_1000K	LITERAL1
+
 
 # Conversion multipliers
-AIN_TO_V_MULT      LITERAL1
-TIN_TO_C_MULT      LITERAL1
-CIN_TO_mA_MULT     LITERAL1
+AIN_TO_V_MULT	LITERAL1
+TIN_TO_C_MULT	LITERAL1
+CIN_TO_mA_MULT	LITERAL1
 
-PH_TO_PH_MULT      LITERAL1
-TC_TO_C_MULT       LITERAL1
-PT_TO_C_MULT       LITERAL1
-FREQ_TO_HZ_MULT    LITERAL1
+PH_TO_PH_MULT	LITERAL1
+TC_TO_C_MULT	LITERAL1
+PT_TO_C_MULT	LITERAL1
+FREQ_TO_HZ_MULT	LITERAL1
 
 
 # EQXTC Constants
@@ -386,7 +430,7 @@ EQXHI_FREQ_QUALITY_DELAYED_ERROR_MASK	LITERAL1
 
 
 # Fault Detection Macros
-CIN_OC_ERROR		LITERAL1
+CIN_OC_ERROR	LITERAL1
 
 TIN_OPEN_CIRCUIT	LITERAL1
 TIN_SHORT_CIRCUIT	LITERAL1
@@ -404,6 +448,12 @@ PT_FAULT_REFIN_HIGH	LITERAL1
 PT_FAULT_RTDIN_LOW	LITERAL1
 PT_FAULT_OVUV	LITERAL1
 IS_PT_VALID	KEYWORD2
+
+PH_RANGE_MIN	LITERAL1
+PH_RANGE_MAX	LITERAL1
+PH_FAULT_BELOW_RANGE	LITERAL1
+PH_FAULT_ABOVE_RANGE	LITERAL1
+IS_PH_VALID	KEYWORD2
 
 EQXRA_SYS_STATUS_OK	LITERAL1
 EQXRA_SYS_STATUS_SW_WDG_TRIP	LITERAL1
@@ -430,55 +480,55 @@ EQXRA_AOUT_STATUS_NA	LITERAL1
 ###########################################
 # MQTT Entity Config Structs for Array / Bulk Creation (KEYWORD1)
 ###########################################
-SwitchEntityConfig			KEYWORD1
-ValueEntityConfig			KEYWORD1
-TextEntityConfig			KEYWORD1
+SwitchEntityConfig	KEYWORD1
+ValueEntityConfig	KEYWORD1
+TextEntityConfig	KEYWORD1
 BinarySensorEntityConfig	KEYWORD1
-SensorEntityConfig			KEYWORD1
+SensorEntityConfig	KEYWORD1
 
 
 ###########################################
 # MQTT Entity Creation - Array / Bulk API (KEYWORD2)
 ###########################################
-createControl_Switches		KEYWORD2
-createControl_Values		KEYWORD2
-createControl_Texts			KEYWORD2
+createControl_Switches	KEYWORD2
+createControl_Values	KEYWORD2
+createControl_Texts	KEYWORD2
 createDisplay_BinarySensors	KEYWORD2
-createDisplay_Sensors		KEYWORD2
+createDisplay_Sensors	KEYWORD2
 
 ###########################################
 # MQTT Entity Read Functions (KEYWORD2)
 ###########################################
-readControl_Switch			KEYWORD2
-readControl_Value			KEYWORD2
-readControl_Text			KEYWORD2
+readControl_Switch	KEYWORD2
+readControl_Value	KEYWORD2
+readControl_Text	KEYWORD2
 readDisplay_BinarySensor	KEYWORD2
-readDisplay_Sensor			KEYWORD2
+readDisplay_Sensor	KEYWORD2
 
 ###########################################
 # MQTT Entity Update Functions (KEYWORD2)
 ###########################################
-updateControl_Switch		KEYWORD2
-updateControl_Value			KEYWORD2
-updateControl_Text			KEYWORD2
+updateControl_Switch	KEYWORD2
+updateControl_Value	KEYWORD2
+updateControl_Text	KEYWORD2
 updateDisplay_BinarySensor	KEYWORD2
-updateDisplay_Sensor		KEYWORD2
+updateDisplay_Sensor	KEYWORD2
 
 ###########################################
 # MQTT Global Topics (not UID based) for Node-RED, direct device access etc. (KEYWORD2)
 ###########################################
-createGlobal_Topic		KEYWORD2
-readGlobal_Topic			KEYWORD2
-readGlobal_TopicBOOL		KEYWORD2
-readGlobal_TopicFLOAT		KEYWORD2
-updateGlobal_Topic		KEYWORD2
+createGlobal_Topic	KEYWORD2
+readGlobal_Topic	KEYWORD2
+readGlobal_TopicBOOL	KEYWORD2
+readGlobal_TopicFLOAT	KEYWORD2
+updateGlobal_Topic	KEYWORD2
 
 
 
 ###########################################
 # MQTT Entity Creation - Single Entity API (KEYWORD2)
 ###########################################
-createControl_Switch		KEYWORD2
-createControl_Value			KEYWORD2
+createControl_Switch	KEYWORD2
+createControl_Value	KEYWORD2
 createDisplay_BinarySensor	KEYWORD2
-createDisplay_Sensor		KEYWORD2
+createDisplay_Sensor	KEYWORD2
